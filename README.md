@@ -47,6 +47,7 @@ python3 .claude/tools/skill_agent.py auto "<task>" --dry-run --json
 - `reuse`: open the matched local skill and follow it
 - `created`: use the generated skill immediately
 - `preview-create`: rerun without `--dry-run` to persist the generated skill
+- If a step inside the chosen workflow becomes its own repeatable, non-trivial subtask, rerun `python3 .claude/tools/skill_agent.py auto "<sub-task>" --json` for that step and then return to the parent workflow.
 
 Check reuse health:
 
@@ -121,6 +122,8 @@ The package is split into two main layers:
 
 - packaging: install and sync the shipped assets into another repository
 - runtime: `skill_agent.py` resolves, creates, refreshes, and prunes repo-local skills after installation
+
+Runtime routing is recursive by design. A parent skill should hand off any reusable, multi-step sub-flow back into the same automation set with `python3 .claude/tools/skill_agent.py auto "<sub-task>" --json` instead of absorbing that logic into one oversized skill.
 
 The packaging layer is manifest-driven. `package.json` declares three asset groups:
 
