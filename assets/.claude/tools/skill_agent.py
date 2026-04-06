@@ -335,7 +335,14 @@ TITLE_CASE_OVERRIDES = {
     "xcode": "Xcode",
 }
 
-PROTECTED_SKILLS = {"project-skill-router", "omc-reference"}
+PROTECTED_SKILLS = {
+    "project-skill-router",
+    "core-project-summary",
+    "core-repo-structure-analysis",
+    "core-docs-entrypoint-guidance",
+    "core-change-summary",
+    "omc-reference",
+}
 ARCHIVE_DIRNAME = "_archived"
 USAGE_FILENAME = "usage.json"
 USAGE_HISTORY_LIMIT = 12

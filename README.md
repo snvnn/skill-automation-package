@@ -167,7 +167,7 @@ python3 .claude/tools/skill_agent.py list
 python3 .claude/tools/skill_agent.py auto "find or create the right reusable workflow" --json
 ```
 
-You should see the packaged router skill in the list, and `auto` should return either a reusable local skill match or a generated preview/result.
+You should see the packaged core skills in the list, including the router, and `auto` should return either a reusable local skill match or a generated preview/result.
 
 ### Common Install Variants
 

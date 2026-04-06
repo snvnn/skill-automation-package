@@ -452,6 +452,40 @@ class SkillAgentTests(unittest.TestCase):
         self.assertEqual(payload[0]["name"], "dusty-skill")
         self.assertEqual(payload[0]["status"], "candidate")
 
+    def test_usage_keeps_packaged_core_helper_protected(self) -> None:
+        old_timestamp = (datetime.now(UTC) - timedelta(days=60)).replace(microsecond=0).isoformat()
+        self.write_skill(
+            "core-project-summary",
+            description="Summarize the repository in a read-only way.",
+            metadata={
+                "category": "docs",
+                "summary": "Summarize the repository in a read-only way.",
+                "created_at": old_timestamp,
+                "updated_at": old_timestamp,
+                "management_mode": "locked",
+            },
+        )
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_PATH),
+                "usage",
+                "--repo-root",
+                str(self.repo_root),
+                "--status",
+                "protected",
+                "--json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload[0]["name"], "core-project-summary")
+        self.assertEqual(payload[0]["status"], "protected")
+
     def test_prune_apply_archives_candidate_skill(self) -> None:
         old_timestamp = (datetime.now(UTC) - timedelta(days=60)).replace(microsecond=0).isoformat()
         self.write_skill(
