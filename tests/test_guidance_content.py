@@ -47,6 +47,51 @@ class GuidanceContentTests(unittest.TestCase):
         self.assertIn("## Example Outcomes", readme)
         self.assertIn("### Why `AGENTS.md` And `CLAUDE.md` Are Updated", readme)
 
+    def test_readme_documents_target_repo_git_hygiene(self) -> None:
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("## Target Repo Git Hygiene", readme)
+        self.assertIn(".claude/skills/registry.json", readme)
+        self.assertIn(".claude/skills/usage.json", readme)
+        self.assertIn("### Local-Only Automation", readme)
+
+    def test_readme_separates_default_and_skip_docs_upgrade_paths(self) -> None:
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("### Default Upgrade Path", readme)
+        self.assertIn("### Upgrade Without Managed Docs", readme)
+        self.assertLess(
+            readme.index("### Default Upgrade Path"),
+            readme.index("### Upgrade Without Managed Docs"),
+        )
+        self.assertIn("python3 scripts/install.py --target /path/to/target-repo\n```", readme)
+        self.assertIn(
+            "python3 scripts/install.py --target /path/to/target-repo --skip-agents --skip-claude",
+            readme,
+        )
+
+    def test_readme_documents_nearest_sync_assets_detection(self) -> None:
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("nearest matching parent", readme)
+        self.assertIn("python3 scripts/sync_assets.py --source-root /path/to/source-repo", readme)
+
+    def test_readme_verification_commands_avoid_python_bytecode(self) -> None:
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'",
+            readme,
+        )
+        self.assertIn(
+            "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s assets/.claude/tests -p 'test_*.py'",
+            readme,
+        )
+        self.assertIn(
+            "PYTHONDONTWRITEBYTECODE=1 python3 scripts/install.py --target /tmp/skill-automation-package-dry-run --dry-run",
+            readme,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

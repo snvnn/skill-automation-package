@@ -1,6 +1,6 @@
 {
   "name": "skill-automation-package",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Portable repo-local skill automation bundle for Codex and Claude Code.",
   "scripts": {
     "test": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'",

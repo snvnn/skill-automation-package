@@ -85,7 +85,7 @@ Use this package when you have the package repository checked out locally and wa
 
 ### Prerequisites
 
-- Python 3.11 or newer
+- Python 3.10 or newer
 - a target repository where you want repo-local skill automation under `.claude/`
 - write access to the target repository
 
@@ -141,7 +141,56 @@ You should see the packaged router skill in the list, and `auto` should return e
 - If `AGENTS.md` or `CLAUDE.md` does not exist, install creates the file and inserts the managed block.
 - If both package markers already exist, install replaces only the content inside that managed block.
 - If the markers are missing, install appends the managed block to the end of the existing file.
-- `--dry-run` previews the install result without creating the target directory or writing package files.
+- `--dry-run` previews the install result without creating the target directory or writing package files, and its status lines use `Would ...` wording for changes that are only being previewed.
+
+## Target Repo Git Hygiene
+
+Decide up front whether the installed automation should be shared through version control or kept local to one checkout.
+
+### Shared Automation In Version Control
+
+Use this when the repository wants shared repo-local skills and shared entrypoint guidance.
+
+Usually commit:
+
+- `.claude/tools/skill_agent.py`
+- `.claude/skills/project-skill-router/`
+- `.claude/tests/test_skill_agent.py` when installed
+- `AGENTS.md` and `CLAUDE.md` when you want the managed guidance blocks shared with the team
+
+Usually ignore:
+
+```gitignore
+.claude/skills/registry.json
+.claude/skills/usage.json
+.claude/skills/_archived/
+.claude/skill-automation-package.json
+.claude/**/__pycache__/
+.claude/**/*.pyc
+```
+
+The install manifest is usually not worth committing because it changes on reinstall and mostly records machine-generated install metadata.
+
+Do not blindly ignore `.claude/skills/` if you want teammates to share reusable local skills. That would also hide the actual skill definitions.
+
+### Local-Only Automation
+
+Use this when the install is only for one developer checkout and should not affect the shared repository state.
+
+Typical approach:
+
+- install with `--skip-agents --skip-claude` if you do not want top-level guidance files touched
+- ignore the installed automation tree and any optional managed docs
+
+Example:
+
+```gitignore
+.claude/
+AGENTS.md
+CLAUDE.md
+```
+
+Pick one policy deliberately. Mixing the two usually creates confusion during upgrades.
 
 ### Reinstall After Updates
 
@@ -170,14 +219,25 @@ Important upgrade caveats:
 - if you removed the managed markers from `AGENTS.md` or `CLAUDE.md`, reinstall will append a new managed block instead of replacing the old text
 - install does not remove older files that are no longer part of the package, so cleanup is still manual when package contents shrink
 
-Recommended upgrade flow:
+### Default Upgrade Path
+
+Use this unless the target repository intentionally manages `AGENTS.md` and `CLAUDE.md` outside this package.
 
 ```bash
 python3 scripts/install.py --target /path/to/target-repo --dry-run
-python3 scripts/install.py --target /path/to/target-repo --skip-agents --skip-claude
+python3 scripts/install.py --target /path/to/target-repo
 ```
 
-Use the second form only when the target repository already manages those two documentation files manually and you want to refresh just the packaged `.claude` assets.
+This keeps the packaged `.claude` assets and the managed guidance blocks aligned on every reinstall.
+
+### Upgrade Without Managed Docs
+
+Use this variant only when the target repository already manages `AGENTS.md` and `CLAUDE.md` manually and you want to refresh only the packaged `.claude` assets.
+
+```bash
+python3 scripts/install.py --target /path/to/target-repo --dry-run --skip-agents --skip-claude
+python3 scripts/install.py --target /path/to/target-repo --skip-agents --skip-claude
+```
 
 ## Installed Agent Flow
 
@@ -305,7 +365,7 @@ If you update the source package inside a working repository, resync the package
 python3 scripts/sync_assets.py
 ```
 
-`sync_assets.py` looks for a parent repository that already contains the live `.claude` source tree. If the source-of-truth lives somewhere else, point at it explicitly:
+`sync_assets.py` looks for the nearest matching parent repository that already contains the live `.claude` source tree. If the source-of-truth lives somewhere else, point at it explicitly:
 
 ```bash
 python3 scripts/sync_assets.py --source-root /path/to/source-repo
@@ -320,15 +380,15 @@ When you need to publish changes from a stale or dirty local checkout, use the d
 From a repository that contains the package source and packaged tests:
 
 ```bash
-python3 -m unittest discover -s .claude/tests -p 'test_*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s .claude/tests -p 'test_*.py'
 ```
 
 From this package repository, you can also run:
 
 ```bash
-python3 -m unittest discover -s tests -p 'test_*.py'
-python3 -m unittest discover -s assets/.claude/tests -p 'test_*.py'
-python3 scripts/install.py --target /tmp/skill-automation-package-dry-run --dry-run
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s assets/.claude/tests -p 'test_*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/install.py --target /tmp/skill-automation-package-dry-run --dry-run
 ```
 
 Equivalent maintenance helpers are also exposed in `package.json` under `test`, `test:assets`, `install:dry-run`, and `sync-assets`.

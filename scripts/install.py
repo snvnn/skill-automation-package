@@ -5,8 +5,15 @@ import argparse
 import json
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
+
+try:
+    from datetime import UTC
+except ImportError:
+    from datetime import timezone
+
+    UTC = timezone.utc
 
 from package_layout import (
     ASSETS_ROOT,
@@ -80,11 +87,14 @@ def main() -> int:
         refresh_registry(target)
         refreshed = True
 
+    agents_label = "Would update AGENTS.md" if args.dry_run else "Updated AGENTS.md"
+    claude_label = "Would update CLAUDE.md" if args.dry_run else "Updated CLAUDE.md"
+    manifest_label = "Would write install manifest" if args.dry_run else "Wrote install manifest"
     print(f"Installed skill automation package {layout.version} into {target}")
     print(f"Copied files: {len(copied_files)}")
-    print(f"Updated AGENTS.md: {'yes' if wrote_agents else 'no'}")
-    print(f"Updated CLAUDE.md: {'yes' if wrote_claude else 'no'}")
-    print(f"Wrote install manifest: {'yes' if wrote_manifest else 'no'}")
+    print(f"{agents_label}: {'yes' if wrote_agents else 'no'}")
+    print(f"{claude_label}: {'yes' if wrote_claude else 'no'}")
+    print(f"{manifest_label}: {'yes' if wrote_manifest else 'no'}")
     print(f"Refreshed registry: {'yes' if refreshed else 'no'}")
     return 0
 

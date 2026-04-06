@@ -53,6 +53,36 @@ class SyncAssetsTests(unittest.TestCase):
 
             self.assertEqual(resolved, repo_root)
 
+    def test_resolve_source_root_auto_detects_direct_parent_source_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir) / "source-repo"
+            package_root = repo_root / "skill-automation-package"
+            package_root.mkdir(parents=True, exist_ok=True)
+            self.write_source_tree(repo_root)
+
+            resolved = sync_assets.resolve_source_root(
+                self.layout,
+                package_root=package_root,
+            )
+
+            self.assertEqual(resolved, repo_root)
+
+    def test_resolve_source_root_prefers_nearest_matching_ancestor(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            outer_root = Path(tempdir) / "outer-repo"
+            inner_root = outer_root / "nested-source"
+            package_root = inner_root / "vendor" / "skill-automation-package"
+            package_root.mkdir(parents=True, exist_ok=True)
+            self.write_source_tree(outer_root)
+            self.write_source_tree(inner_root)
+
+            resolved = sync_assets.resolve_source_root(
+                self.layout,
+                package_root=package_root,
+            )
+
+            self.assertEqual(resolved, inner_root)
+
     def test_resolve_source_root_raises_when_no_source_tree_matches(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             package_root = Path(tempdir) / "vendor" / "skill-automation-package"

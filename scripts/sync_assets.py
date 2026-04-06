@@ -16,7 +16,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help=(
             "Repository root that contains the live .claude assets. When omitted, "
-            "the script searches parent directories for a matching source tree."
+            "the script searches parent directories and uses the nearest matching "
+            "source tree."
         ),
     )
     return parser
