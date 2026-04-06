@@ -2,6 +2,20 @@
 
 Portable repo-local skill automation for Codex and Claude Code.
 
+## Quick Start
+
+Install into the repository you are already in, then use the installed runtime immediately. The package is `npx`-first, but the installed runtime still uses Python 3.10+.
+
+```bash
+cd your-repo
+npx skill-automation-package install --target .
+python3 .claude/tools/skill_agent.py auto "add tests" --json
+```
+
+- no setup required beyond `npx` and Python 3.10+
+- works on existing repositories
+- safe: does not modify user-authored files
+
 The published npm package is `skill-automation-package`. It is a thin installer frontend over the same Python-based automation bundle; the runtime and install core still live in Python.
 This remains a Python-installed automation bundle, not an npm runtime package.
 
@@ -18,14 +32,7 @@ After installation, an agent can:
 - archive low-value skills that stay unused long enough to become cleanup candidates
 - route future Codex and Claude Code sessions through the same workflow
 
-## What It Installs
-
-- `.claude/tools/skill_agent.py`
-- five packaged core default skills under `.claude/skills/`: `project-skill-router/` plus read-only helpers for project summary, repo structure analysis, docs entrypoint guidance, and change summary
-- optional `.claude/tests/test_skill_agent.py`
-- managed automation blocks for `AGENTS.md` and `CLAUDE.md`
-
-## Quick Start
+## Basic Flow
 
 Use the published package to install into another repository:
 
@@ -40,12 +47,6 @@ npx skill-automation-package update --target /path/to/target-repo
 ```
 
 Python 3.10 or newer is still required. The npm entrypoint is a thin wrapper around the Python installer and does not replace the Python core.
-
-If you already have this repository checked out locally, the direct Python install path remains fully supported:
-
-```bash
-python3 scripts/install.py --target /path/to/target-repo
-```
 
 `install` always allows reinstall. `update` is version-aware and only reinstalls when the target reports an older installed version.
 Before reinstalling, the wrapper checks `.claude/skill-automation-package.json` in the target repo and reports whether the target is not installed, already at the current version, or behind the current package version.
@@ -63,6 +64,13 @@ If you want a preview before writing files:
 ```bash
 python3 .claude/tools/skill_agent.py auto "<task>" --dry-run --json
 ```
+
+## What It Installs
+
+- `.claude/tools/skill_agent.py`
+- five packaged core default skills under `.claude/skills/`: `project-skill-router/` plus read-only helpers for project summary, repo structure analysis, docs entrypoint guidance, and change summary
+- optional `.claude/tests/test_skill_agent.py`
+- managed automation blocks for `AGENTS.md` and `CLAUDE.md`
 
 ## Example Outcomes
 
@@ -97,7 +105,7 @@ Create a new skill when no strong match exists:
 
 The exact skill name is inferred from the task, but the flow is stable: reuse when there is a strong match, otherwise scaffold a new reusable local skill and refresh the registry immediately.
 
-## Installation Guide
+## Advanced Installation
 
 Use this package when you want to install the automation bundle into another repository. The published npm package is the default entrypoint, and the direct Python path remains available when you are working from a local checkout of this repository.
 
@@ -118,13 +126,15 @@ Use this package when you want to install the automation bundle into another rep
 npx skill-automation-package install --target /path/to/target-repo
 ```
 
-3. Or, if you already have this repository checked out locally, run the Python installer directly:
+### Manual Installation
+
+If you already have this repository checked out locally, the direct Python install path remains fully supported:
 
 ```bash
 python3 scripts/install.py --target /path/to/target-repo
 ```
 
-4. The installer will:
+### What The Installer Writes
 
 - copy `.claude/tools/skill_agent.py`
 - copy the packaged core default skills under `.claude/skills/`
