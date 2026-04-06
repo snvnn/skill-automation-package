@@ -42,6 +42,61 @@ If you want a preview before writing files:
 python3 .claude/tools/skill_agent.py auto "<task>" --dry-run --json
 ```
 
+## Installation Guide
+
+Use this package when you have the package repository checked out locally and want to install the automation bundle into another repository.
+
+### Prerequisites
+
+- Python 3.11 or newer
+- a target repository where you want repo-local skill automation under `.claude/`
+- write access to the target repository
+
+### Standard Install
+
+1. Choose the target repository.
+2. Run the installer from this package repository:
+
+```bash
+python3 scripts/install.py --target /path/to/target-repo
+```
+
+3. The installer will:
+
+- copy `.claude/tools/skill_agent.py`
+- copy `.claude/skills/project-skill-router/`
+- optionally copy `.claude/tests/test_skill_agent.py`
+- insert managed automation blocks into `AGENTS.md` and `CLAUDE.md`
+- write `.claude/skill-automation-package.json`
+- refresh `.claude/skills/registry.json`
+
+### Verify The Install
+
+After installation, check the target repository:
+
+```bash
+cd /path/to/target-repo
+python3 .claude/tools/skill_agent.py list
+python3 .claude/tools/skill_agent.py auto "find or create the right reusable workflow" --json
+```
+
+You should see the packaged router skill in the list, and `auto` should return either a reusable local skill match or a generated preview/result.
+
+### Common Install Variants
+
+- Preview without writing files: `python3 scripts/install.py --target /path/to/target-repo --dry-run`
+- Skip the packaged test file: `python3 scripts/install.py --target /path/to/target-repo --no-tests`
+- Skip managed `AGENTS.md`: `python3 scripts/install.py --target /path/to/target-repo --skip-agents`
+- Skip managed `CLAUDE.md`: `python3 scripts/install.py --target /path/to/target-repo --skip-claude`
+
+### Reinstall After Updates
+
+If you change the packaged assets in this repository and want the target repository to pick up the new version:
+
+1. Update or sync the package assets in this repository.
+2. Rerun `python3 scripts/install.py --target /path/to/target-repo`.
+3. Recheck the installed commands in the target repository.
+
 ## Installed Agent Flow
 
 - `reuse`: open the matched local skill and follow it
