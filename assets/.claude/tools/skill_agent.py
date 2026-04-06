@@ -8,7 +8,7 @@ import shutil
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 STOPWORDS = {
@@ -392,6 +392,21 @@ class SkillRefreshPlan:
     updated_days: int
 
 
+@dataclass(slots=True, frozen=True)
+class CliArgument:
+    flags: tuple[str, ...]
+    kwargs: dict[str, Any]
+
+
+@dataclass(slots=True, frozen=True)
+class CliCommand:
+    name: str
+    help: str
+    handler: Callable[[argparse.Namespace], int]
+    arguments: tuple[CliArgument, ...] = ()
+    configure: Callable[[argparse.ArgumentParser], None] | None = None
+
+
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
@@ -404,190 +419,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    list_parser = subparsers.add_parser("list", help="List discovered skills.")
-    add_shared_location_args(list_parser)
-    list_parser.add_argument("--json", action="store_true", help="Emit JSON.")
-    list_parser.set_defaults(func=cmd_list)
-
-    refresh_parser = subparsers.add_parser(
-        "refresh", help="Scan skills and rebuild the registry file."
-    )
-    add_shared_location_args(refresh_parser)
-    refresh_parser.set_defaults(func=cmd_refresh)
-
-    search_parser = subparsers.add_parser(
-        "search", help="Search skills by task, trigger, category, or tags."
-    )
-    add_shared_location_args(search_parser)
-    search_parser.add_argument("query", help="Search query.")
-    search_parser.add_argument("--top", type=int, default=5, help="Result limit.")
-    search_parser.add_argument("--json", action="store_true", help="Emit JSON.")
-    search_parser.set_defaults(func=cmd_search)
-
-    suggest_parser = subparsers.add_parser(
-        "suggest", help="Recommend the best skill matches for a task."
-    )
-    add_shared_location_args(suggest_parser)
-    suggest_parser.add_argument("task", help="Natural-language task description.")
-    suggest_parser.add_argument("--top", type=int, default=3, help="Result limit.")
-    suggest_parser.add_argument("--json", action="store_true", help="Emit JSON.")
-    suggest_parser.set_defaults(func=cmd_suggest)
-
-    resolve_parser = subparsers.add_parser(
-        "resolve", help="Return the best-matching skill path for a task."
-    )
-    add_shared_location_args(resolve_parser)
-    resolve_parser.add_argument("task", help="Natural-language task description.")
-    resolve_parser.add_argument(
-        "--min-score",
-        type=float,
-        default=4.0,
-        help="Minimum score required to treat the match as reusable.",
-    )
-    resolve_parser.set_defaults(func=cmd_resolve)
-
-    create_parser = subparsers.add_parser(
-        "create", help="Create a new skill with structured metadata."
-    )
-    add_shared_location_args(create_parser)
-    add_create_arguments(create_parser)
-    create_parser.set_defaults(func=cmd_create)
-
-    bootstrap_parser = subparsers.add_parser(
-        "bootstrap",
-        help="Create a richer new skill from a task statement using inferred metadata.",
-    )
-    add_shared_location_args(bootstrap_parser)
-    bootstrap_parser.add_argument("task", help="Task statement used to scaffold a skill.")
-    bootstrap_parser.add_argument(
-        "--name",
-        help="Explicit skill name. When omitted, derive one from the task.",
-    )
-    bootstrap_parser.add_argument(
-        "--category",
-        default="auto",
-        help="Skill category. Defaults to auto inference from the task.",
-    )
-    bootstrap_parser.add_argument(
-        "--tag",
-        action="append",
-        default=[],
-        help="Extra tag. Repeat to add more.",
-    )
-    bootstrap_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview the generated skill without writing files.",
-    )
-    bootstrap_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Emit the generated skill preview as JSON.",
-    )
-    bootstrap_parser.add_argument(
-        "--force", action="store_true", help="Overwrite an existing skill directory."
-    )
-    bootstrap_parser.set_defaults(func=cmd_bootstrap)
-
-    auto_parser = subparsers.add_parser(
-        "auto",
-        help="Resolve the best local skill for a task, or create one automatically when missing.",
-    )
-    add_shared_location_args(auto_parser)
-    auto_parser.add_argument("task", help="Task statement to resolve against local skills.")
-    auto_parser.add_argument(
-        "--min-score",
-        type=float,
-        default=8.0,
-        help="Minimum score required to reuse an existing skill.",
-    )
-    auto_parser.add_argument(
-        "--category",
-        default="auto",
-        help="Category hint when a new skill must be generated.",
-    )
-    auto_parser.add_argument(
-        "--tag",
-        action="append",
-        default=[],
-        help="Extra tag to include if a new skill is generated.",
-    )
-    auto_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Do not write files when no reusable skill exists; return a creation preview instead.",
-    )
-    auto_parser.add_argument(
-        "--skip-update",
-        action="store_true",
-        help="Skip automatic metadata refresh after reusing an existing skill.",
-    )
-    auto_parser.add_argument("--json", action="store_true", help="Emit JSON.")
-    auto_parser.add_argument(
-        "--force", action="store_true", help="Overwrite an existing generated skill if needed."
-    )
-    auto_parser.set_defaults(func=cmd_auto)
-
-    usage_parser = subparsers.add_parser(
-        "usage",
-        help="Show skill reuse frequency, freshness, and cleanup candidates.",
-    )
-    add_shared_location_args(usage_parser)
-    usage_parser.add_argument("--json", action="store_true", help="Emit JSON.")
-    usage_parser.add_argument(
-        "--status",
-        default="all",
-        choices=["all", "active", "stale", "candidate", "protected"],
-        help="Filter by computed usage status.",
-    )
-    usage_parser.set_defaults(func=cmd_usage)
-
-    review_parser = subparsers.add_parser(
-        "review",
-        help="Review existing skills for safe metadata refresh candidates.",
-    )
-    add_shared_location_args(review_parser)
-    review_parser.add_argument("--json", action="store_true", help="Emit JSON.")
-    review_parser.add_argument(
-        "--status",
-        default="candidate",
-        choices=["all", "candidate", "healthy", "protected", "locked"],
-        help="Filter by computed refresh status.",
-    )
-    review_parser.set_defaults(func=cmd_review)
-
-    update_parser = subparsers.add_parser(
-        "update",
-        help="Preview or apply safe metadata refreshes for existing skills.",
-    )
-    add_shared_location_args(update_parser)
-    update_parser.add_argument(
-        "name",
-        nargs="?",
-        help="Specific skill name. When omitted, operate on all refresh candidates.",
-    )
-    update_parser.add_argument("--json", action="store_true", help="Emit JSON.")
-    update_parser.add_argument(
-        "--apply",
-        action="store_true",
-        help="Apply the planned metadata updates instead of only previewing them.",
-    )
-    update_parser.set_defaults(func=cmd_update)
-
-    prune_parser = subparsers.add_parser(
-        "prune",
-        help="Archive low-value skills that have seen little or no reuse.",
-    )
-    add_shared_location_args(prune_parser)
-    prune_parser.add_argument("--json", action="store_true", help="Emit JSON.")
-    prune_parser.add_argument(
-        "--apply",
-        action="store_true",
-        help="Archive the current candidates instead of only previewing them.",
-    )
-    prune_parser.set_defaults(func=cmd_prune)
+    for command in build_command_specs():
+        command_parser = subparsers.add_parser(command.name, help=command.help)
+        add_shared_location_args(command_parser)
+        if command.configure:
+            command.configure(command_parser)
+        add_cli_arguments(command_parser, command.arguments)
+        command_parser.set_defaults(func=command.handler)
 
     return parser
+
+
+def add_cli_arguments(
+    parser: argparse.ArgumentParser,
+    arguments: tuple[CliArgument, ...],
+) -> None:
+    for argument in arguments:
+        parser.add_argument(*argument.flags, **argument.kwargs)
 
 
 def add_shared_location_args(parser: argparse.ArgumentParser) -> None:
@@ -1030,6 +878,204 @@ def cmd_prune(args: argparse.Namespace) -> int:
         print(f"  to: {item['archived_path']}")
         print(f"  reason: {item['reason']}")
     return 0
+
+
+def build_command_specs() -> list[CliCommand]:
+    return [
+        CliCommand(
+            name="list",
+            help="List discovered skills.",
+            handler=cmd_list,
+            arguments=(cli_argument("--json", action="store_true", help="Emit JSON."),),
+        ),
+        CliCommand(
+            name="refresh",
+            help="Scan skills and rebuild the registry file.",
+            handler=cmd_refresh,
+        ),
+        CliCommand(
+            name="search",
+            help="Search skills by task, trigger, category, or tags.",
+            handler=cmd_search,
+            arguments=(
+                cli_argument("query", help="Search query."),
+                cli_argument("--top", type=int, default=5, help="Result limit."),
+                cli_argument("--json", action="store_true", help="Emit JSON."),
+            ),
+        ),
+        CliCommand(
+            name="suggest",
+            help="Recommend the best skill matches for a task.",
+            handler=cmd_suggest,
+            arguments=(
+                cli_argument("task", help="Natural-language task description."),
+                cli_argument("--top", type=int, default=3, help="Result limit."),
+                cli_argument("--json", action="store_true", help="Emit JSON."),
+            ),
+        ),
+        CliCommand(
+            name="resolve",
+            help="Return the best-matching skill path for a task.",
+            handler=cmd_resolve,
+            arguments=(
+                cli_argument("task", help="Natural-language task description."),
+                cli_argument(
+                    "--min-score",
+                    type=float,
+                    default=4.0,
+                    help="Minimum score required to treat the match as reusable.",
+                ),
+            ),
+        ),
+        CliCommand(
+            name="create",
+            help="Create a new skill with structured metadata.",
+            handler=cmd_create,
+            configure=add_create_arguments,
+        ),
+        CliCommand(
+            name="bootstrap",
+            help="Create a richer new skill from a task statement using inferred metadata.",
+            handler=cmd_bootstrap,
+            arguments=(
+                cli_argument("task", help="Task statement used to scaffold a skill."),
+                cli_argument(
+                    "--name",
+                    help="Explicit skill name. When omitted, derive one from the task.",
+                ),
+                cli_argument(
+                    "--category",
+                    default="auto",
+                    help="Skill category. Defaults to auto inference from the task.",
+                ),
+                cli_argument(
+                    "--tag",
+                    action="append",
+                    default=[],
+                    help="Extra tag. Repeat to add more.",
+                ),
+                cli_argument(
+                    "--dry-run",
+                    action="store_true",
+                    help="Preview the generated skill without writing files.",
+                ),
+                cli_argument(
+                    "--json",
+                    action="store_true",
+                    help="Emit the generated skill preview as JSON.",
+                ),
+                cli_argument(
+                    "--force",
+                    action="store_true",
+                    help="Overwrite an existing skill directory.",
+                ),
+            ),
+        ),
+        CliCommand(
+            name="auto",
+            help="Resolve the best local skill for a task, or create one automatically when missing.",
+            handler=cmd_auto,
+            arguments=(
+                cli_argument("task", help="Task statement to resolve against local skills."),
+                cli_argument(
+                    "--min-score",
+                    type=float,
+                    default=8.0,
+                    help="Minimum score required to reuse an existing skill.",
+                ),
+                cli_argument(
+                    "--category",
+                    default="auto",
+                    help="Category hint when a new skill must be generated.",
+                ),
+                cli_argument(
+                    "--tag",
+                    action="append",
+                    default=[],
+                    help="Extra tag to include if a new skill is generated.",
+                ),
+                cli_argument(
+                    "--dry-run",
+                    action="store_true",
+                    help="Do not write files when no reusable skill exists; return a creation preview instead.",
+                ),
+                cli_argument(
+                    "--skip-update",
+                    action="store_true",
+                    help="Skip automatic metadata refresh after reusing an existing skill.",
+                ),
+                cli_argument("--json", action="store_true", help="Emit JSON."),
+                cli_argument(
+                    "--force",
+                    action="store_true",
+                    help="Overwrite an existing generated skill if needed.",
+                ),
+            ),
+        ),
+        CliCommand(
+            name="usage",
+            help="Show skill reuse frequency, freshness, and cleanup candidates.",
+            handler=cmd_usage,
+            arguments=(
+                cli_argument("--json", action="store_true", help="Emit JSON."),
+                cli_argument(
+                    "--status",
+                    default="all",
+                    choices=["all", "active", "stale", "candidate", "protected"],
+                    help="Filter by computed usage status.",
+                ),
+            ),
+        ),
+        CliCommand(
+            name="review",
+            help="Review existing skills for safe metadata refresh candidates.",
+            handler=cmd_review,
+            arguments=(
+                cli_argument("--json", action="store_true", help="Emit JSON."),
+                cli_argument(
+                    "--status",
+                    default="candidate",
+                    choices=["all", "candidate", "healthy", "protected", "locked"],
+                    help="Filter by computed refresh status.",
+                ),
+            ),
+        ),
+        CliCommand(
+            name="update",
+            help="Preview or apply safe metadata refreshes for existing skills.",
+            handler=cmd_update,
+            arguments=(
+                cli_argument(
+                    "name",
+                    nargs="?",
+                    help="Specific skill name. When omitted, operate on all refresh candidates.",
+                ),
+                cli_argument("--json", action="store_true", help="Emit JSON."),
+                cli_argument(
+                    "--apply",
+                    action="store_true",
+                    help="Apply the planned metadata updates instead of only previewing them.",
+                ),
+            ),
+        ),
+        CliCommand(
+            name="prune",
+            help="Archive low-value skills that have seen little or no reuse.",
+            handler=cmd_prune,
+            arguments=(
+                cli_argument("--json", action="store_true", help="Emit JSON."),
+                cli_argument(
+                    "--apply",
+                    action="store_true",
+                    help="Archive the current candidates instead of only previewing them.",
+                ),
+            ),
+        ),
+    ]
+
+
+def cli_argument(*flags: str, **kwargs: Any) -> CliArgument:
+    return CliArgument(flags=tuple(flags), kwargs=kwargs)
 
 
 def load_records_from_args(
