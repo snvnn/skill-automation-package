@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -327,6 +328,15 @@ TITLE_CASE_OVERRIDES = {
     "xcode": "Xcode",
 }
 
+PROTECTED_SKILLS = {"project-skill-router", "omc-reference"}
+ARCHIVE_DIRNAME = "_archived"
+USAGE_FILENAME = "usage.json"
+USAGE_HISTORY_LIMIT = 12
+ACTIVE_RECENT_DAYS = 14
+PRUNE_NEVER_REUSED_DAYS = 21
+PRUNE_SINGLE_REUSE_DAYS = 45
+PRUNE_LOW_REUSE_DAYS = 90
+
 
 @dataclass(slots=True)
 class SkillRecord:
@@ -490,6 +500,33 @@ def build_parser() -> argparse.ArgumentParser:
         "--force", action="store_true", help="Overwrite an existing generated skill if needed."
     )
     auto_parser.set_defaults(func=cmd_auto)
+
+    usage_parser = subparsers.add_parser(
+        "usage",
+        help="Show skill reuse frequency, freshness, and cleanup candidates.",
+    )
+    add_shared_location_args(usage_parser)
+    usage_parser.add_argument("--json", action="store_true", help="Emit JSON.")
+    usage_parser.add_argument(
+        "--status",
+        default="all",
+        choices=["all", "active", "stale", "candidate", "protected"],
+        help="Filter by computed usage status.",
+    )
+    usage_parser.set_defaults(func=cmd_usage)
+
+    prune_parser = subparsers.add_parser(
+        "prune",
+        help="Archive low-value skills that have seen little or no reuse.",
+    )
+    add_shared_location_args(prune_parser)
+    prune_parser.add_argument("--json", action="store_true", help="Emit JSON.")
+    prune_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Archive the current candidates instead of only previewing them.",
+    )
+    prune_parser.set_defaults(func=cmd_prune)
 
     return parser
 
@@ -656,6 +693,12 @@ def cmd_create(args: argparse.Namespace) -> int:
     record = create_skill(skills_dir=skills_dir, blueprint=blueprint, force=args.force)
     records = discover_skills(skills_dir)
     write_registry(records, registry_path)
+    record_skill_event(
+        usage_path=resolve_usage_path(skills_dir),
+        record=record,
+        action="manual-create",
+        task=blueprint.source_task,
+    )
     print(f"Created {record.name} at {record.path}")
     return 0
 
@@ -677,6 +720,12 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     record = create_skill(skills_dir=skills_dir, blueprint=blueprint, force=args.force)
     records = discover_skills(skills_dir)
     write_registry(records, registry_path)
+    record_skill_event(
+        usage_path=resolve_usage_path(skills_dir),
+        record=record,
+        action="manual-bootstrap",
+        task=blueprint.source_task,
+    )
     if args.json:
         payload = blueprint_payload(blueprint)
         payload["path"] = record.path
@@ -691,9 +740,17 @@ def cmd_auto(args: argparse.Namespace) -> int:
     records, skills_dir, registry_path = load_records_from_args(args)
     matches = search_records(records, args.task, limit=3)
     preferred_match = choose_auto_match(matches, args.task)
+    usage_path = resolve_usage_path(skills_dir)
 
     if preferred_match and preferred_match[0] >= args.min_score:
         score, reason, record = preferred_match
+        record_skill_event(
+            usage_path=usage_path,
+            record=record,
+            action="auto-reuse",
+            task=args.task,
+            score=score,
+        )
         payload = {
             "action": "reuse",
             "task": clean_text(args.task),
@@ -724,6 +781,12 @@ def cmd_auto(args: argparse.Namespace) -> int:
     record = create_skill(skills_dir=skills_dir, blueprint=blueprint, force=args.force)
     updated_records = discover_skills(skills_dir)
     write_registry(updated_records, registry_path)
+    record_skill_event(
+        usage_path=usage_path,
+        record=record,
+        action="auto-created",
+        task=blueprint.source_task,
+    )
     payload = {
         "action": "created",
         "task": clean_text(args.task),
@@ -733,6 +796,72 @@ def cmd_auto(args: argparse.Namespace) -> int:
         "blueprint": blueprint_payload(blueprint),
     }
     emit_auto_result(payload, as_json=args.json)
+    return 0
+
+
+def cmd_usage(args: argparse.Namespace) -> int:
+    records, skills_dir, _ = load_records_from_args(args)
+    summaries = build_skill_usage_summaries(records, resolve_usage_path(skills_dir))
+    if args.status != "all":
+        summaries = [item for item in summaries if item["status"] == args.status]
+
+    if args.json:
+        print(json.dumps(summaries, ensure_ascii=False, indent=2))
+        return 0
+
+    if not summaries:
+        print("No skill usage data available.")
+        return 0
+
+    for item in summaries:
+        print(
+            f"[{item['status']}] {item['name']} "
+            f"reuse={item['reuse_count']} create={item['create_count']} "
+            f"last={item['last_activity_days']}d age={item['age_days']}d"
+        )
+        print(f"  path: {item['path']}")
+        print(f"  reason: {item['reason']}")
+    return 0
+
+
+def cmd_prune(args: argparse.Namespace) -> int:
+    records, skills_dir, registry_path = load_records_from_args(args)
+    usage_path = resolve_usage_path(skills_dir)
+    summaries = build_skill_usage_summaries(records, usage_path)
+    candidates = [item for item in summaries if item["status"] == "candidate"]
+
+    if args.json and not args.apply:
+        print(json.dumps(candidates, ensure_ascii=False, indent=2))
+        return 0
+
+    if not candidates:
+        if args.json:
+            print(json.dumps([], ensure_ascii=False, indent=2))
+        else:
+            print("No prune candidates.")
+        return 0
+
+    if not args.apply:
+        for item in candidates:
+            print(f"[candidate] {item['name']}")
+            print(f"  path: {item['path']}")
+            print(f"  reason: {item['reason']}")
+        print("Next: rerun with `--apply` to archive these skills.")
+        return 0
+
+    archived = archive_skill_candidates(candidates, skills_dir, usage_path)
+    updated_records = discover_skills(skills_dir)
+    write_registry(updated_records, registry_path)
+
+    if args.json:
+        print(json.dumps(archived, ensure_ascii=False, indent=2))
+        return 0
+
+    for item in archived:
+        print(f"[archived] {item['name']}")
+        print(f"  from: {item['from_path']}")
+        print(f"  to: {item['archived_path']}")
+        print(f"  reason: {item['reason']}")
     return 0
 
 
@@ -763,6 +892,8 @@ def discover_skills(skills_dir: Path) -> list[SkillRecord]:
         return records
 
     for skill_file in sorted(skills_dir.rglob("SKILL.md")):
+        if ARCHIVE_DIRNAME in skill_file.parts:
+            continue
         record = parse_skill(skill_file)
         if record:
             records.append(record)
@@ -1248,6 +1379,7 @@ def create_skill(
         "validation": blueprint.validation,
         "examples": blueprint.examples,
         "source_task": blueprint.source_task,
+        "created_at": utc_now(),
         "updated_at": utc_now(),
     }
 
@@ -1318,6 +1450,9 @@ def build_skill_markdown(blueprint: SkillBlueprint) -> str:
     )
     lines.append(
         "- Search for this skill with `python3 .claude/tools/skill_agent.py search \"<task>\"`."
+    )
+    lines.append(
+        "- Review reuse health with `python3 .claude/tools/skill_agent.py usage` and archive stale skills with `python3 .claude/tools/skill_agent.py prune --apply`."
     )
     lines.append(
         "- Preview a generated skill with `python3 .claude/tools/skill_agent.py bootstrap \"<task>\" --dry-run --json`."
@@ -1423,6 +1558,254 @@ def emit_auto_result(payload: dict[str, Any], *, as_json: bool) -> None:
         print(f"Category: {blueprint['category']}")
         print("Reason: no reusable skill cleared the threshold; previewing a generated skill instead.")
         print("Next: rerun without --dry-run to persist the generated skill.")
+
+
+def resolve_usage_path(skills_dir: Path) -> Path:
+    return skills_dir / USAGE_FILENAME
+
+
+def load_usage_store(usage_path: Path) -> dict[str, Any]:
+    if not usage_path.exists():
+        return {"skills": {}}
+    try:
+        payload = json.loads(usage_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {"skills": {}}
+    if not isinstance(payload, dict):
+        return {"skills": {}}
+    skills = payload.get("skills")
+    if not isinstance(skills, dict):
+        payload["skills"] = {}
+    return payload
+
+
+def write_usage_store(usage_path: Path, payload: dict[str, Any]) -> None:
+    usage_path.parent.mkdir(parents=True, exist_ok=True)
+    payload["updated_at"] = utc_now()
+    usage_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def record_skill_event(
+    *,
+    usage_path: Path,
+    record: SkillRecord,
+    action: str,
+    task: str,
+    score: float | None = None,
+) -> None:
+    now = utc_now()
+    payload = load_usage_store(usage_path)
+    skills = payload.setdefault("skills", {})
+    entry = skills.setdefault(record.name, {})
+
+    entry["name"] = record.name
+    entry["category"] = record.category
+    entry["path"] = record.path
+    entry["first_seen_at"] = str(entry.get("first_seen_at") or now)
+    entry["last_activity_at"] = now
+    entry["last_action"] = action
+    entry["last_task"] = clean_text(task)
+    entry["reuse_count"] = int(entry.get("reuse_count", 0))
+    entry["create_count"] = int(entry.get("create_count", 0))
+    entry["auto_hits"] = int(entry.get("auto_hits", 0))
+
+    if action.startswith("auto-"):
+        entry["auto_hits"] += 1
+    if "reuse" in action:
+        entry["reuse_count"] += 1
+        entry["last_reused_at"] = now
+    if "create" in action or "bootstrap" in action:
+        entry["create_count"] += 1
+        entry["last_created_at"] = now
+    if score is not None:
+        entry["last_score"] = round(score, 2)
+
+    history = entry.get("history", [])
+    if not isinstance(history, list):
+        history = []
+    history.append(
+        {
+            "at": now,
+            "action": action,
+            "task": clean_text(task),
+        }
+    )
+    entry["history"] = history[-USAGE_HISTORY_LIMIT:]
+
+    write_usage_store(usage_path, payload)
+
+
+def build_skill_usage_summaries(
+    records: list[SkillRecord],
+    usage_path: Path,
+) -> list[dict[str, Any]]:
+    usage_store = load_usage_store(usage_path)
+    skills = usage_store.get("skills", {})
+    summaries = []
+
+    for record in records:
+        entry = skills.get(record.name, {})
+        summaries.append(summarize_skill_usage(record, entry))
+
+    summaries.sort(
+        key=lambda item: (
+            usage_status_rank(item["status"]),
+            -item["reuse_count"],
+            -item["age_days"],
+            item["name"],
+        )
+    )
+    return summaries
+
+
+def summarize_skill_usage(record: SkillRecord, entry: dict[str, Any]) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    created_at = (
+        parse_datetime(entry.get("first_seen_at"))
+        or parse_datetime(load_skill_metadata_timestamp(record, "created_at"))
+        or parse_datetime(load_skill_metadata_timestamp(record, "updated_at"))
+        or filesystem_timestamp(Path(record.path) / "SKILL.md")
+        or now
+    )
+    last_activity = (
+        parse_datetime(entry.get("last_activity_at"))
+        or parse_datetime(entry.get("last_reused_at"))
+        or parse_datetime(entry.get("last_created_at"))
+        or created_at
+    )
+
+    reuse_count = int(entry.get("reuse_count", 0))
+    create_count = int(entry.get("create_count", 0))
+    age_days = max((now - created_at).days, 0)
+    last_activity_days = max((now - last_activity).days, 0)
+    status, reason = classify_skill_usage(
+        record.name,
+        reuse_count=reuse_count,
+        create_count=create_count,
+        age_days=age_days,
+        last_activity_days=last_activity_days,
+    )
+
+    return {
+        "name": record.name,
+        "path": record.path,
+        "category": record.category,
+        "reuse_count": reuse_count,
+        "create_count": create_count,
+        "auto_hits": int(entry.get("auto_hits", 0)),
+        "age_days": age_days,
+        "last_activity_days": last_activity_days,
+        "status": status,
+        "reason": reason,
+        "last_task": entry.get("last_task"),
+        "last_action": entry.get("last_action"),
+        "first_seen_at": format_datetime(created_at),
+        "last_activity_at": format_datetime(last_activity),
+    }
+
+
+def classify_skill_usage(
+    skill_name: str,
+    *,
+    reuse_count: int,
+    create_count: int,
+    age_days: int,
+    last_activity_days: int,
+) -> tuple[str, str]:
+    if skill_name in PROTECTED_SKILLS:
+        return "protected", "Core routing or reference skill."
+    if reuse_count == 0 and create_count == 0 and age_days >= PRUNE_NEVER_REUSED_DAYS:
+        return "candidate", f"Never used and older than {PRUNE_NEVER_REUSED_DAYS} days."
+    if reuse_count == 0 and create_count >= 1 and last_activity_days >= PRUNE_NEVER_REUSED_DAYS:
+        return "candidate", f"Created but never reused after {PRUNE_NEVER_REUSED_DAYS} days."
+    if reuse_count <= 1 and last_activity_days >= PRUNE_SINGLE_REUSE_DAYS:
+        return "candidate", f"Reused once or less and idle for {PRUNE_SINGLE_REUSE_DAYS}+ days."
+    if reuse_count <= 2 and last_activity_days >= PRUNE_LOW_REUSE_DAYS:
+        return "candidate", f"Low reuse and idle for {PRUNE_LOW_REUSE_DAYS}+ days."
+    if reuse_count >= 3 or last_activity_days <= ACTIVE_RECENT_DAYS:
+        return "active", "Recently active or reused often enough to keep."
+    return "stale", "Low recent activity, but not yet old enough to archive."
+
+
+def usage_status_rank(status: str) -> int:
+    order = {
+        "candidate": 0,
+        "stale": 1,
+        "active": 2,
+        "protected": 3,
+    }
+    return order.get(status, 99)
+
+
+def archive_skill_candidates(
+    candidates: list[dict[str, Any]],
+    skills_dir: Path,
+    usage_path: Path,
+) -> list[dict[str, Any]]:
+    archive_dir = skills_dir / ARCHIVE_DIRNAME
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    payload = load_usage_store(usage_path)
+    skills = payload.setdefault("skills", {})
+    archived: list[dict[str, Any]] = []
+
+    for item in candidates:
+        source = Path(item["path"])
+        destination = unique_archive_path(archive_dir, item["name"])
+        shutil.move(str(source), str(destination))
+        entry = skills.setdefault(item["name"], {})
+        entry["archived_at"] = utc_now()
+        entry["archived_path"] = str(destination)
+        entry["archive_reason"] = item["reason"]
+        archived.append(
+            {
+                "name": item["name"],
+                "from_path": str(source),
+                "archived_path": str(destination),
+                "reason": item["reason"],
+            }
+        )
+
+    write_usage_store(usage_path, payload)
+    return archived
+
+
+def unique_archive_path(archive_dir: Path, name: str) -> Path:
+    candidate = archive_dir / name
+    if not candidate.exists():
+        return candidate
+    timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+    return archive_dir / f"{name}-{timestamp}"
+
+
+def load_skill_metadata_timestamp(record: SkillRecord, key: str) -> str:
+    metadata = load_companion_metadata(Path(record.path) / "skill.json")
+    value = metadata.get(key)
+    return str(value) if isinstance(value, str) else ""
+
+
+def parse_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def filesystem_timestamp(path: Path) -> datetime | None:
+    if not path.exists():
+        return None
+    return datetime.fromtimestamp(path.stat().st_mtime, UTC)
+
+
+def format_datetime(value: datetime) -> str:
+    return value.replace(microsecond=0).isoformat()
 
 
 def write_registry(records: list[SkillRecord], registry_path: Path) -> None:

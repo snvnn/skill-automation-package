@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
@@ -184,6 +185,9 @@ class SkillAgentTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["action"], "reuse")
         self.assertEqual(payload["match"]["name"], "ocr-debug")
+        usage = json.loads((self.skills_dir / "usage.json").read_text(encoding="utf-8"))
+        self.assertEqual(usage["skills"]["ocr-debug"]["reuse_count"], 1)
+        self.assertEqual(usage["skills"]["ocr-debug"]["auto_hits"], 1)
 
     def test_auto_creates_new_skill_and_refreshes_registry(self) -> None:
         result = subprocess.run(
@@ -209,6 +213,8 @@ class SkillAgentTests(unittest.TestCase):
         registry = json.loads((self.skills_dir / "registry.json").read_text(encoding="utf-8"))
         registry_names = [item["name"] for item in registry["skills"]]
         self.assertIn(created_name, registry_names)
+        usage = json.loads((self.skills_dir / "usage.json").read_text(encoding="utf-8"))
+        self.assertEqual(usage["skills"][created_name]["create_count"], 1)
 
     def test_auto_does_not_reuse_router_for_domain_task(self) -> None:
         self.write_skill(
@@ -243,6 +249,74 @@ class SkillAgentTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["action"], "created")
         self.assertNotEqual(payload["created_skill"]["name"], "project-skill-router")
+
+    def test_usage_reports_candidate_for_old_unused_skill(self) -> None:
+        old_timestamp = (datetime.now(UTC) - timedelta(days=60)).replace(microsecond=0).isoformat()
+        self.write_skill(
+            "dusty-skill",
+            description="Handle a dusty workflow. Use when needed.",
+            metadata={
+                "category": "workflow",
+                "summary": "Handle a dusty workflow.",
+                "created_at": old_timestamp,
+                "updated_at": old_timestamp,
+            },
+        )
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_PATH),
+                "usage",
+                "--repo-root",
+                str(self.repo_root),
+                "--status",
+                "candidate",
+                "--json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload[0]["name"], "dusty-skill")
+        self.assertEqual(payload[0]["status"], "candidate")
+
+    def test_prune_apply_archives_candidate_skill(self) -> None:
+        old_timestamp = (datetime.now(UTC) - timedelta(days=60)).replace(microsecond=0).isoformat()
+        self.write_skill(
+            "dusty-skill",
+            description="Handle a dusty workflow. Use when needed.",
+            metadata={
+                "category": "workflow",
+                "summary": "Handle a dusty workflow.",
+                "created_at": old_timestamp,
+                "updated_at": old_timestamp,
+            },
+        )
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_PATH),
+                "prune",
+                "--repo-root",
+                str(self.repo_root),
+                "--apply",
+                "--json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload[0]["name"], "dusty-skill")
+        self.assertTrue((self.skills_dir / "_archived" / "dusty-skill" / "SKILL.md").exists())
+        self.assertFalse((self.skills_dir / "dusty-skill").exists())
+        registry = json.loads((self.skills_dir / "registry.json").read_text(encoding="utf-8"))
+        self.assertEqual(registry["skills"], [])
 
     def write_skill(self, name: str, *, description: str, metadata: dict[str, object]) -> None:
         skill_dir = self.skills_dir / name

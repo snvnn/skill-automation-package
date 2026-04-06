@@ -15,7 +15,8 @@ Reuse the smallest suitable local skill first, and create a new one only when th
 2. If `auto` returns `reuse`, open that skill's `SKILL.md` and follow it instead of inventing a new workflow.
 3. If `auto` returns `created`, use the generated skill right away and refine it only if the task reveals a real gap.
 4. If the task is novel and you want inspection before writing files, run `python3 .claude/tools/skill_agent.py auto "<task>" --dry-run --json`.
-5. Use `suggest`, `search`, `bootstrap`, or `create` only when you need more control than the default `auto` flow provides.
+5. Review reuse health with `python3 .claude/tools/skill_agent.py usage` and archive stale skills with `python3 .claude/tools/skill_agent.py prune --apply`.
+6. Use `suggest`, `search`, `bootstrap`, or `create` only when you need more control than the default `auto` flow provides.
 
 ## Reuse Notes
 
@@ -23,4 +24,5 @@ Reuse the smallest suitable local skill first, and create a new one only when th
 - Search by purpose, not only by name; the registry indexes category, tags, triggers, summary, and workflow steps.
 - Keep `SKILL.md` concise and procedural. Put structured metadata in the companion `skill.json`, including validation and example requests when available.
 - `auto` refreshes the registry after generating a new skill, so future sessions can find it immediately.
+- Reuse frequency is tracked in `.claude/skills/usage.json`; low-value skills are archived into `.claude/skills/_archived/`.
 - Prefer creating a skill only for repeatable, multi-step workflows. Do not create one-off skills for a single narrow edit.

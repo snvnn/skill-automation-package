@@ -11,6 +11,8 @@ After installation, an agent can:
 - search for the best existing local skill for a task
 - generate a new reusable skill when no strong match exists
 - refresh the local skill registry automatically
+- track reuse frequency for each local skill
+- archive low-value skills that stay unused long enough to become cleanup candidates
 - route future Codex and Claude Code sessions through the same workflow
 
 ## What It Installs
@@ -40,11 +42,31 @@ If you want a preview before writing files:
 python3 .claude/tools/skill_agent.py auto "<task>" --dry-run --json
 ```
 
-## Install Into Another Repository
+## Installed Agent Flow
+
+- `reuse`: open the matched local skill and follow it
+- `created`: use the generated skill immediately
+- `preview-create`: rerun without `--dry-run` to persist the generated skill
+
+Check reuse health:
 
 ```bash
-python3 scripts/install.py --target /path/to/target-repo
+python3 .claude/tools/skill_agent.py usage
 ```
+
+Preview cleanup candidates:
+
+```bash
+python3 .claude/tools/skill_agent.py prune
+```
+
+Archive the current candidates:
+
+```bash
+python3 .claude/tools/skill_agent.py prune --apply
+```
+
+## Install Options
 
 Preview without writing files:
 
@@ -70,21 +92,9 @@ Do not update `CLAUDE.md`:
 python3 scripts/install.py --target /path/to/target-repo --skip-claude
 ```
 
-## Installed Agent Flow
-
-For non-trivial work in the target repository:
-
-```bash
-python3 .claude/tools/skill_agent.py auto "<task>" --json
-```
-
-- `reuse`: open the matched local skill and follow it
-- `created`: use the generated skill immediately
-- `preview-create`: rerun without `--dry-run` to persist the generated skill
-
 ## Package Layout
 
-- `assets/.claude/tools/skill_agent.py`: resolver, search, scaffold, and registry CLI
+- `assets/.claude/tools/skill_agent.py`: resolver, search, scaffold, usage tracking, and prune CLI
 - `assets/.claude/skills/project-skill-router/`: default reusable routing skill
 - `templates/agents_block.md`: managed block for `AGENTS.md`
 - `templates/claude_block.md`: managed block for `CLAUDE.md`
