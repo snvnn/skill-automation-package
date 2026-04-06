@@ -2,6 +2,8 @@
 
 Portable repo-local skill automation for Codex and Claude Code.
 
+This repository ships a Python-installed automation bundle. It is not an npm runtime package; `package.json` is used here as a package manifest for managed assets, versioning, and install metadata.
+
 ## Why This Exists
 
 Most agent sessions can search local files, but they do not automatically build a reusable skill system for the repository they are working in. This package adds that layer.
@@ -42,6 +44,39 @@ If you want a preview before writing files:
 python3 .claude/tools/skill_agent.py auto "<task>" --dry-run --json
 ```
 
+## Example Outcomes
+
+Representative `auto` outcomes look like this.
+
+Reuse an existing skill:
+
+```json
+{
+  "action": "reuse",
+  "task": "vision extraction error on the OCR screen",
+  "match": {
+    "name": "ocr-debug",
+    "category": "ios",
+    "reason": "triggers overlap: extraction, vision, error"
+  }
+}
+```
+
+Create a new skill when no strong match exists:
+
+```json
+{
+  "action": "created",
+  "task": "draft a reusable privacy policy update workflow",
+  "created_skill": {
+    "name": "new-skill-name",
+    "category": "docs"
+  }
+}
+```
+
+The exact skill name is inferred from the task, but the flow is stable: reuse when there is a strong match, otherwise scaffold a new reusable local skill and refresh the registry immediately.
+
 ## Installation Guide
 
 Use this package when you have the package repository checked out locally and want to install the automation bundle into another repository.
@@ -69,6 +104,16 @@ python3 scripts/install.py --target /path/to/target-repo
 - insert managed automation blocks into `AGENTS.md` and `CLAUDE.md`
 - write `.claude/skill-automation-package.json`
 - refresh `.claude/skills/registry.json`
+
+### Why `AGENTS.md` And `CLAUDE.md` Are Updated
+
+The installer adds a bounded managed block so future Codex and Claude Code sessions start from the same routing command instead of bypassing the local skill system.
+
+If your team wants a less invasive rollout:
+
+- use `--skip-agents` to keep `AGENTS.md` untouched
+- use `--skip-claude` to keep `CLAUDE.md` untouched
+- add the generated command guidance manually after you validate the package in that repository
 
 ### Verify The Install
 

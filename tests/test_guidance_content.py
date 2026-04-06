@@ -9,6 +9,12 @@ SUBTASK_ROUTING_PHRASE = 'auto "<sub-task>" --json'
 
 
 class GuidanceContentTests(unittest.TestCase):
+    def test_readme_clarifies_distribution_identity(self) -> None:
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("Python-installed automation bundle", readme)
+        self.assertIn("not an npm runtime package", readme)
+
     def test_router_skill_documents_subtask_routing(self) -> None:
         router_skill = (
             REPO_ROOT
@@ -32,6 +38,12 @@ class GuidanceContentTests(unittest.TestCase):
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
 
         self.assertIn(SUBTASK_ROUTING_PHRASE, readme)
+
+    def test_readme_documents_example_outcomes_and_managed_blocks(self) -> None:
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("## Example Outcomes", readme)
+        self.assertIn("### Why `AGENTS.md` And `CLAUDE.md` Are Updated", readme)
 
 
 if __name__ == "__main__":
