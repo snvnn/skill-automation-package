@@ -2,6 +2,17 @@
 
 Portable repo-local skill automation for Codex and Claude Code.
 
+## Why This Exists
+
+Most agent sessions can search local files, but they do not automatically build a reusable skill system for the repository they are working in. This package adds that layer.
+
+After installation, an agent can:
+
+- search for the best existing local skill for a task
+- generate a new reusable skill when no strong match exists
+- refresh the local skill registry automatically
+- route future Codex and Claude Code sessions through the same workflow
+
 ## What It Installs
 
 - `.claude/tools/skill_agent.py`
@@ -9,12 +20,25 @@ Portable repo-local skill automation for Codex and Claude Code.
 - optional `.claude/tests/test_skill_agent.py`
 - managed automation blocks for `AGENTS.md` and `CLAUDE.md`
 
-## What It Does
+## Quick Start
 
-- resolves the best existing local skill for a task
-- generates a new reusable skill when no strong match exists
-- refreshes the local skill registry automatically
-- injects default guidance so future Codex and Claude Code sessions use the same flow
+Install into another repository:
+
+```bash
+python3 scripts/install.py --target /path/to/target-repo
+```
+
+Then, inside the target repository, start non-trivial work with:
+
+```bash
+python3 .claude/tools/skill_agent.py auto "<task>" --json
+```
+
+If you want a preview before writing files:
+
+```bash
+python3 .claude/tools/skill_agent.py auto "<task>" --dry-run --json
+```
 
 ## Install Into Another Repository
 
@@ -34,6 +58,18 @@ Skip the packaged test file:
 python3 scripts/install.py --target /path/to/target-repo --no-tests
 ```
 
+Do not update `AGENTS.md`:
+
+```bash
+python3 scripts/install.py --target /path/to/target-repo --skip-agents
+```
+
+Do not update `CLAUDE.md`:
+
+```bash
+python3 scripts/install.py --target /path/to/target-repo --skip-claude
+```
+
 ## Installed Agent Flow
 
 For non-trivial work in the target repository:
@@ -46,6 +82,15 @@ python3 .claude/tools/skill_agent.py auto "<task>" --json
 - `created`: use the generated skill immediately
 - `preview-create`: rerun without `--dry-run` to persist the generated skill
 
+## Package Layout
+
+- `assets/.claude/tools/skill_agent.py`: resolver, search, scaffold, and registry CLI
+- `assets/.claude/skills/project-skill-router/`: default reusable routing skill
+- `templates/agents_block.md`: managed block for `AGENTS.md`
+- `templates/claude_block.md`: managed block for `CLAUDE.md`
+- `scripts/install.py`: installer for another repository
+- `scripts/sync_assets.py`: sync packaged assets from the source repository
+
 ## Maintenance
 
 If you update the source package inside a working repository, resync the packaged assets with:
@@ -54,9 +99,11 @@ If you update the source package inside a working repository, resync the package
 python3 scripts/sync_assets.py
 ```
 
+Then reinstall into a target repository or regenerate the published package commit as needed.
+
 ## Verification
 
-From a repository that contains the package source:
+From a repository that contains the package source and packaged tests:
 
 ```bash
 python3 -m unittest discover -s .claude/tests -p 'test_*.py'
