@@ -4,7 +4,7 @@
 
 This priority list combines two inputs:
 
-- the release review recorded in `docs/reviews/2026-04-06-v0.1.2-code-review.md`
+- the release review recorded in `docs/archive/reviews/2026-04-06-v0.1.2-code-review.md`
 - the observed install session against the `Flippers` repository on 2026-04-06
 
 The goal is to rank follow-up work by practical user impact, not just code cleanliness.
@@ -85,7 +85,7 @@ Implemented direction:
 
 Relevant references:
 
-- `docs/reviews/2026-04-06-v0.1.2-code-review.md`
+- `docs/archive/reviews/2026-04-06-v0.1.2-code-review.md`
 - `scripts/install.py:51`
 - `scripts/install.py:60`
 - `scripts/install.py:85`
@@ -167,7 +167,7 @@ Implemented direction:
 
 Relevant references:
 
-- `docs/reviews/2026-04-06-v0.1.2-code-review.md`
+- `docs/archive/reviews/2026-04-06-v0.1.2-code-review.md`
 - `README.md:146`
 - `tests/test_install.py:91`
 

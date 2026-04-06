@@ -65,20 +65,10 @@ git push -u origin <branch-name>
 
 Then open a draft PR through the GitHub app or a direct GitHub URL. If `gh auth status` reports an invalid token, do not block on repairing `gh` if the GitHub app path is already available.
 
-## Notes From The April 6, 2026 Publish
+Historical example:
 
-This repository was published with the flow above because:
-
-- the original checkout on `main` was behind `origin/main` by five commits
-- the original checkout was intentionally left untouched so local state would not be lost
-- the clean publish branch was created from `origin/main` in a temporary worktree
-- validation in the worktree initially picked up Python 3.10 instead of the Python 3.12 interpreter used in the original workspace, so checks were rerun with the explicit interpreter path
-
-That publish produced:
-
-- branch: `codex-refactor-package-extensibility`
-- commit: `74b6ec0`
-- draft PR: `#1`
+- A dated example from the April 6, 2026 publish is preserved in `docs/archive/legacy/2026-04-06-publish-workflow-example.md`.
+- Keep this runbook focused on the repeatable procedure above; use the archived note only when you need the specific historical case.
 
 ## Cleanup
 

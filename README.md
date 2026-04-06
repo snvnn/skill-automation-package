@@ -32,6 +32,23 @@ Install into another repository:
 python3 scripts/install.py --target /path/to/target-repo
 ```
 
+Or use the npm wrapper entrypoint:
+
+```bash
+npx skill-automation-package install --target /path/to/target-repo
+```
+
+To update an existing target without forcing an unnecessary reinstall when it is already current:
+
+```bash
+npx skill-automation-package update --target /path/to/target-repo
+```
+
+The npm entrypoint is a thin wrapper around the Python installer. It does not replace the Python core, and Python 3.10 or newer is still required.
+If you already have this repository checked out locally, the direct `python3 scripts/install.py ...` path remains fully supported.
+`install` always allows reinstall. `update` is version-aware and only reinstalls when the target reports an older installed version.
+Before reinstalling, the wrapper checks `.claude/skill-automation-package.json` in the target repo and reports whether the target is not installed, already at the current version, or behind the current package version.
+
 The installer copies the packaged assets, updates managed blocks in `AGENTS.md` and `CLAUDE.md` unless skipped, writes `.claude/skill-automation-package.json`, and refreshes `.claude/skills/registry.json`.
 
 Then, inside the target repository, start non-trivial work with:
@@ -86,6 +103,7 @@ Use this package when you have the package repository checked out locally and wa
 ### Prerequisites
 
 - Python 3.10 or newer
+- for the npm entrypoint, Node.js 18 or newer
 - a target repository where you want repo-local skill automation under `.claude/`
 - write access to the target repository
 
@@ -200,6 +218,25 @@ Upgrade by rerunning the installer from the newer package source:
 python3 scripts/install.py --target /path/to/target-repo
 ```
 
+If you are consuming the published npm package, the equivalent update path is:
+
+```bash
+npx skill-automation-package install --target /path/to/target-repo
+```
+
+That npm path is still a reinstall. It uses the existing install metadata to report whether the target is already up to date or whether a newer package version is available before reinstalling.
+If you want a version-aware no-op when the target is already current, use:
+
+```bash
+npx skill-automation-package update --target /path/to/target-repo
+```
+
+### Current Wrapper Limitations
+
+- `update` is a version-aware reinstall, not a partial update.
+- `update` blocks implicit downgrade attempts; use `install` only when you intentionally want to replace the target with the current package version.
+- If install metadata is malformed, `update` stops and asks you to use `install` for a deliberate reinstall.
+
 What gets updated in place:
 
 - packaged assets under `.claude/` are copied over the existing installed package files
@@ -229,6 +266,9 @@ python3 scripts/install.py --target /path/to/target-repo
 ```
 
 This keeps the packaged `.claude` assets and the managed guidance blocks aligned on every reinstall.
+
+For npm releases, `package.json` `version` is the source of truth and the matching git tag should be `vX.Y.Z`.
+Run `npm run release:check` before tagging or publishing.
 
 ### Upgrade Without Managed Docs
 
@@ -373,7 +413,9 @@ python3 scripts/sync_assets.py --source-root /path/to/source-repo
 
 Then reinstall into a target repository or regenerate the published package commit as needed.
 
-When you need to publish changes from a stale or dirty local checkout, use the documented worktree-based flow in `docs/publish-workflow.md` instead of committing directly on the old checkout.
+When you need to publish changes from a stale or dirty local checkout, use the documented worktree-based flow in `docs/operations/publish-workflow.md` instead of committing directly on the old checkout.
+
+For npm-specific release flow, version/tag rules, and reinstall-based lifecycle notes, see `docs/operations/npm-release-workflow.md`.
 
 ## Verification
 
