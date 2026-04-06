@@ -32,6 +32,8 @@ Install into another repository:
 python3 scripts/install.py --target /path/to/target-repo
 ```
 
+The installer copies the packaged assets, updates managed blocks in `AGENTS.md` and `CLAUDE.md` unless skipped, writes `.claude/skill-automation-package.json`, and refreshes `.claude/skills/registry.json`.
+
 Then, inside the target repository, start non-trivial work with:
 
 ```bash
@@ -134,13 +136,48 @@ You should see the packaged router skill in the list, and `auto` should return e
 - Skip managed `AGENTS.md`: `python3 scripts/install.py --target /path/to/target-repo --skip-agents`
 - Skip managed `CLAUDE.md`: `python3 scripts/install.py --target /path/to/target-repo --skip-claude`
 
+## Managed File Behavior
+
+- If `AGENTS.md` or `CLAUDE.md` does not exist, install creates the file and inserts the managed block.
+- If both package markers already exist, install replaces only the content inside that managed block.
+- If the markers are missing, install appends the managed block to the end of the existing file.
+- `--dry-run` previews the install result without creating the target directory or writing package files.
+
 ### Reinstall After Updates
 
-If you change the packaged assets in this repository and want the target repository to pick up the new version:
+Upgrade by rerunning the installer from the newer package source:
 
-1. Update or sync the package assets in this repository.
-2. Rerun `python3 scripts/install.py --target /path/to/target-repo`.
-3. Recheck the installed commands in the target repository.
+```bash
+python3 scripts/install.py --target /path/to/target-repo
+```
+
+What gets updated in place:
+
+- packaged assets under `.claude/` are copied over the existing installed package files
+- the managed blocks in `AGENTS.md` and `CLAUDE.md` are replaced when their markers already exist
+- `.claude/skill-automation-package.json` is rewritten with the latest package version and install timestamp
+- `.claude/skills/registry.json` is regenerated at the end of install
+
+What stays in place:
+
+- repo-local skills you created under `.claude/skills/`
+- usage tracking in `.claude/skills/usage.json`
+- archived skills under `.claude/skills/_archived/`
+
+Important upgrade caveats:
+
+- if you edited shipped files such as `.claude/tools/skill_agent.py` directly, reinstall will overwrite those edits
+- if you removed the managed markers from `AGENTS.md` or `CLAUDE.md`, reinstall will append a new managed block instead of replacing the old text
+- install does not remove older files that are no longer part of the package, so cleanup is still manual when package contents shrink
+
+Recommended upgrade flow:
+
+```bash
+python3 scripts/install.py --target /path/to/target-repo --dry-run
+python3 scripts/install.py --target /path/to/target-repo --skip-agents --skip-claude
+```
+
+Use the second form only when the target repository already manages those two documentation files manually and you want to refresh just the packaged `.claude` assets.
 
 ## Installed Agent Flow
 
@@ -268,6 +305,12 @@ If you update the source package inside a working repository, resync the package
 python3 scripts/sync_assets.py
 ```
 
+`sync_assets.py` looks for a parent repository that already contains the live `.claude` source tree. If the source-of-truth lives somewhere else, point at it explicitly:
+
+```bash
+python3 scripts/sync_assets.py --source-root /path/to/source-repo
+```
+
 Then reinstall into a target repository or regenerate the published package commit as needed.
 
 When you need to publish changes from a stale or dirty local checkout, use the documented worktree-based flow in `docs/publish-workflow.md` instead of committing directly on the old checkout.
@@ -287,6 +330,9 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 python3 -m unittest discover -s assets/.claude/tests -p 'test_*.py'
 python3 scripts/install.py --target /tmp/skill-automation-package-dry-run --dry-run
 ```
+
+Equivalent maintenance helpers are also exposed in `package.json` under `test`, `test:assets`, `install:dry-run`, and `sync-assets`.
+Those script wrappers set `PYTHONDONTWRITEBYTECODE=1` so routine verification does not leave Python bytecode behind in the packaged asset tree.
 
 ## License
 

@@ -34,7 +34,8 @@ def main() -> int:
     layout = load_package_layout(PACKAGE_MANIFEST)
 
     target = args.target.resolve()
-    target.mkdir(parents=True, exist_ok=True)
+    if not args.dry_run:
+        target.mkdir(parents=True, exist_ok=True)
 
     selected_assets = layout.selected_assets(include_optional=not args.no_tests)
     copied_files = copy_assets(
@@ -175,12 +176,13 @@ def write_install_manifest(
         "installed_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "assets": [str(path.relative_to(target_root)) for path in copied_files],
     }
-    if not dry_run:
-        manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        manifest_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+    if dry_run:
+        return False
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     return True
 
 

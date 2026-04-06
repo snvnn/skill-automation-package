@@ -46,8 +46,5 @@
     "While following a parent workflow, route a reusable subtask through the automation set.",
     "Review reuse frequency and archive stale local skills.",
     "Inspect refresh candidates and update a stale but still useful skill."
-  ],
-  "related_skills": [
-    "omc-reference"
   ]
 }

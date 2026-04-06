@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import sys
 import unittest
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.dont_write_bytecode = True
 SUBTASK_ROUTING_PHRASE = 'auto "<sub-task>" --json'
 
 

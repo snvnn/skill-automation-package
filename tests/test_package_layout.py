@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import package_layout
