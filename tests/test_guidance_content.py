@@ -8,6 +8,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.dont_write_bytecode = True
 SUBTASK_ROUTING_PHRASE = 'auto "<sub-task>" --json'
+CORE_HELPER_SKILLS = (
+    "core-project-summary",
+    "core-repo-structure-analysis",
+    "core-docs-entrypoint-guidance",
+    "core-change-summary",
+)
 
 
 class GuidanceContentTests(unittest.TestCase):
@@ -29,6 +35,16 @@ class GuidanceContentTests(unittest.TestCase):
 
         self.assertIn(SUBTASK_ROUTING_PHRASE, router_skill)
 
+    def test_core_helper_skills_are_packaged_as_read_only_guidance(self) -> None:
+        for skill_name in CORE_HELPER_SKILLS:
+            skill_md = (
+                REPO_ROOT / "assets" / ".claude" / "skills" / skill_name / "SKILL.md"
+            ).read_text(encoding="utf-8")
+
+            lowered = skill_md.lower()
+            self.assertIn("read-only", lowered)
+            self.assertIn("do not create, edit, or delete repository files", lowered)
+
     def test_installed_templates_document_subtask_routing(self) -> None:
         agents_block = (REPO_ROOT / "templates" / "agents_block.md").read_text(encoding="utf-8")
         claude_block = (REPO_ROOT / "templates" / "claude_block.md").read_text(encoding="utf-8")
@@ -46,6 +62,7 @@ class GuidanceContentTests(unittest.TestCase):
 
         self.assertIn("## Example Outcomes", readme)
         self.assertIn("### Why `AGENTS.md` And `CLAUDE.md` Are Updated", readme)
+        self.assertIn("five packaged core default skills", readme)
 
     def test_readme_documents_target_repo_git_hygiene(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")

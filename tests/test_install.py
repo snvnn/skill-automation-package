@@ -17,6 +17,15 @@ import install
 import package_layout
 
 
+CORE_SKILL_NAMES = (
+    "project-skill-router",
+    "core-project-summary",
+    "core-repo-structure-analysis",
+    "core-docs-entrypoint-guidance",
+    "core-change-summary",
+)
+
+
 class InstallScriptTests(unittest.TestCase):
     def write_local_skill(
         self,
@@ -53,6 +62,37 @@ class InstallScriptTests(unittest.TestCase):
             encoding="utf-8",
         )
         return skill_dir
+
+    def assert_core_skills_installed(self, target_root: Path) -> None:
+        for skill_name in CORE_SKILL_NAMES:
+            skill_dir = target_root / ".claude" / "skills" / skill_name
+            self.assertTrue((skill_dir / "SKILL.md").exists(), skill_name)
+            self.assertTrue((skill_dir / "skill.json").exists(), skill_name)
+
+    def assert_manifest_lists_core_skills(self, manifest: dict[str, object]) -> None:
+        assets = set(manifest["assets"])
+        for skill_name in CORE_SKILL_NAMES:
+            self.assertIn(f".claude/skills/{skill_name}/SKILL.md", assets)
+            self.assertIn(f".claude/skills/{skill_name}/skill.json", assets)
+
+    def overwrite_packaged_core_skills(self, target_root: Path) -> None:
+        for skill_name in CORE_SKILL_NAMES:
+            skill_dir = target_root / ".claude" / "skills" / skill_name
+            (skill_dir / "SKILL.md").write_text(f"# Old {skill_name}\n", encoding="utf-8")
+            (skill_dir / "skill.json").write_text("{}\n", encoding="utf-8")
+
+    def assert_packaged_core_skills_match_assets(self, target_root: Path) -> None:
+        for skill_name in CORE_SKILL_NAMES:
+            packaged_dir = PACKAGE_ROOT / "assets" / ".claude" / "skills" / skill_name
+            installed_dir = target_root / ".claude" / "skills" / skill_name
+            self.assertEqual(
+                (installed_dir / "SKILL.md").read_text(encoding="utf-8"),
+                (packaged_dir / "SKILL.md").read_text(encoding="utf-8"),
+            )
+            self.assertEqual(
+                (installed_dir / "skill.json").read_text(encoding="utf-8"),
+                (packaged_dir / "skill.json").read_text(encoding="utf-8"),
+            )
 
     def test_upsert_block_replaces_existing_managed_block(self) -> None:
         existing = (
@@ -180,15 +220,35 @@ class InstallScriptTests(unittest.TestCase):
             self.assertFalse((target_root / "CLAUDE.md").exists())
             self.assertFalse((target_root / ".claude" / "tests" / "test_skill_agent.py").exists())
             self.assertTrue((target_root / ".claude" / "skills" / "registry.json").exists())
+            self.assert_core_skills_installed(target_root)
 
             payload = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(payload["name"], "skill-automation-package")
             self.assertNotIn(".claude/tests/test_skill_agent.py", payload["assets"])
+            self.assert_manifest_lists_core_skills(payload)
+
+            registry_payload = json.loads(
+                (target_root / ".claude" / "skills" / "registry.json").read_text(encoding="utf-8")
+            )
+            registry_names = {item["name"] for item in registry_payload["skills"]}
+            self.assertEqual(registry_names.intersection(CORE_SKILL_NAMES), set(CORE_SKILL_NAMES))
 
     def test_cli_reinstall_preserves_local_state_and_overwrites_packaged_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             target_root = Path(tempdir) / "target-repo"
-            target_root.mkdir(parents=True, exist_ok=True)
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS_DIR / "install.py"),
+                    "--target",
+                    str(target_root),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=PACKAGE_ROOT,
+            )
 
             usage_path = target_root / ".claude" / "skills" / "usage.json"
             usage_path.parent.mkdir(parents=True, exist_ok=True)
@@ -228,10 +288,9 @@ class InstallScriptTests(unittest.TestCase):
             installed_test.parent.mkdir(parents=True, exist_ok=True)
             installed_test.write_text("# old test sentinel\n", encoding="utf-8")
 
+            self.overwrite_packaged_core_skills(target_root)
+
             router_dir = target_root / ".claude" / "skills" / "project-skill-router"
-            router_dir.mkdir(parents=True, exist_ok=True)
-            (router_dir / "SKILL.md").write_text("# Old router\n", encoding="utf-8")
-            (router_dir / "skill.json").write_text("{}\n", encoding="utf-8")
             (router_dir / "obsolete.txt").write_text("stale package file\n", encoding="utf-8")
 
             (target_root / "AGENTS.md").write_text(
@@ -283,6 +342,7 @@ class InstallScriptTests(unittest.TestCase):
             ).read_text(encoding="utf-8")
             self.assertEqual(installed_skill_agent.read_text(encoding="utf-8"), packaged_skill_agent)
             self.assertEqual(installed_test.read_text(encoding="utf-8"), packaged_test)
+            self.assert_packaged_core_skills_match_assets(target_root)
             self.assertTrue((router_dir / "obsolete.txt").exists())
             self.assertEqual(usage_path.read_text(encoding="utf-8"), usage_text)
             self.assertTrue((target_root / ".claude" / "skills" / "team-workflow").exists())
@@ -311,12 +371,13 @@ class InstallScriptTests(unittest.TestCase):
             self.assertEqual(manifest["version"], package_layout.load_package_layout().version)
             self.assertIn(".claude/tools/skill_agent.py", manifest["assets"])
             self.assertIn(".claude/tests/test_skill_agent.py", manifest["assets"])
+            self.assert_manifest_lists_core_skills(manifest)
 
             registry_payload = json.loads(
                 (target_root / ".claude" / "skills" / "registry.json").read_text(encoding="utf-8")
             )
             registry_names = {item["name"] for item in registry_payload["skills"]}
-            self.assertIn("project-skill-router", registry_names)
+            self.assertEqual(registry_names.intersection(CORE_SKILL_NAMES), set(CORE_SKILL_NAMES))
             self.assertIn("team-workflow", registry_names)
 
 

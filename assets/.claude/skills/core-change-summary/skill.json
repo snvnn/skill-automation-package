@@ -1,0 +1,31 @@
+{
+  "category": "workflow",
+  "summary": "Summarize the current working tree or recent changes without editing the repository.",
+  "management_mode": "locked",
+  "tags": [
+    "changes",
+    "summary",
+    "read-only",
+    "review"
+  ],
+  "triggers": [
+    "summarize the current changes",
+    "what changed in this repo",
+    "give me a change summary",
+    "show me the current working tree status"
+  ],
+  "steps": [
+    "Inspect the current working tree, changed files, and the smallest relevant diff or file set.",
+    "Group changes by area, intent, or likely effect.",
+    "Call out obvious risks, open questions, or verification gaps from the observed changes.",
+    "Keep the result read-only and focused on summary."
+  ],
+  "validation": [
+    "Reference the files or diffs used to build the summary.",
+    "Avoid modifying repository files while summarizing changes."
+  ],
+  "examples": [
+    "Summarize the current working tree before I continue.",
+    "Explain the recent changes and any obvious follow-up risks."
+  ]
+}

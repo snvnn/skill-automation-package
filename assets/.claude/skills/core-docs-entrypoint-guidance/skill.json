@@ -1,0 +1,31 @@
+{
+  "category": "docs",
+  "summary": "Identify the best documentation entrypoints and reading order from the existing repo.",
+  "management_mode": "locked",
+  "tags": [
+    "docs",
+    "navigation",
+    "read-only",
+    "onboarding"
+  ],
+  "triggers": [
+    "where should I start reading docs",
+    "find the canonical documentation",
+    "guide me through this repo's docs",
+    "what docs matter first"
+  ],
+  "steps": [
+    "Inspect the root README and the main docs directories.",
+    "Separate canonical references from working notes or archives.",
+    "Recommend the smallest useful reading order for the current task.",
+    "Keep the result read-only and grounded in the existing doc structure."
+  ],
+  "validation": [
+    "Call out which docs are active references and which are background material.",
+    "Avoid changing documentation files while guiding entrypoints."
+  ],
+  "examples": [
+    "Show me which docs to read first in this repository.",
+    "Point me to the canonical docs before I start implementation."
+  ]
+}

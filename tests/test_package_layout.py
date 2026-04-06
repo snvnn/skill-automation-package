@@ -14,12 +14,22 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 import package_layout
 
 
+CORE_SKILL_PATHS = (
+    Path(".claude/skills/project-skill-router"),
+    Path(".claude/skills/core-project-summary"),
+    Path(".claude/skills/core-repo-structure-analysis"),
+    Path(".claude/skills/core-docs-entrypoint-guidance"),
+    Path(".claude/skills/core-change-summary"),
+)
+
+
 class PackageLayoutTests(unittest.TestCase):
     def test_load_package_layout_reads_grouped_assets(self) -> None:
         layout = package_layout.load_package_layout()
 
         self.assertIn(Path(".claude/tools/skill_agent.py"), layout.managed_assets)
-        self.assertIn(Path(".claude/skills/project-skill-router"), layout.managed_assets)
+        for skill_path in CORE_SKILL_PATHS:
+            self.assertIn(skill_path, layout.managed_assets)
         self.assertIn(Path(".claude/tests/test_skill_agent.py"), layout.optional_assets)
         self.assertIn(Path(".claude/tools/skill_agent.py"), layout.executable_assets)
 

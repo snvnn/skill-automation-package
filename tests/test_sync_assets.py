@@ -14,6 +14,15 @@ import package_layout
 import sync_assets
 
 
+CORE_SKILL_NAMES = (
+    "project-skill-router",
+    "core-project-summary",
+    "core-repo-structure-analysis",
+    "core-docs-entrypoint-guidance",
+    "core-change-summary",
+)
+
+
 class SyncAssetsTests(unittest.TestCase):
     def setUp(self) -> None:
         self.layout = package_layout.PackageLayout(
@@ -22,6 +31,10 @@ class SyncAssetsTests(unittest.TestCase):
             managed_assets=(
                 Path(".claude/tools/skill_agent.py"),
                 Path(".claude/skills/project-skill-router"),
+                Path(".claude/skills/core-project-summary"),
+                Path(".claude/skills/core-repo-structure-analysis"),
+                Path(".claude/skills/core-docs-entrypoint-guidance"),
+                Path(".claude/skills/core-change-summary"),
             ),
             optional_assets=(Path(".claude/tests/test_skill_agent.py"),),
             executable_assets=frozenset({Path(".claude/tools/skill_agent.py")}),
@@ -101,10 +114,11 @@ class SyncAssetsTests(unittest.TestCase):
         skill_agent.parent.mkdir(parents=True, exist_ok=True)
         skill_agent.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
 
-        skill_dir = repo_root / ".claude" / "skills" / "project-skill-router"
-        skill_dir.mkdir(parents=True, exist_ok=True)
-        (skill_dir / "SKILL.md").write_text("# Router\n", encoding="utf-8")
-        (skill_dir / "skill.json").write_text("{}\n", encoding="utf-8")
+        for skill_name in CORE_SKILL_NAMES:
+            skill_dir = repo_root / ".claude" / "skills" / skill_name
+            skill_dir.mkdir(parents=True, exist_ok=True)
+            (skill_dir / "SKILL.md").write_text(f"# {skill_name}\n", encoding="utf-8")
+            (skill_dir / "skill.json").write_text("{}\n", encoding="utf-8")
 
         test_file = repo_root / ".claude" / "tests" / "test_skill_agent.py"
         test_file.parent.mkdir(parents=True, exist_ok=True)

@@ -3,6 +3,7 @@
 Portable repo-local skill automation for Codex and Claude Code.
 
 The published npm package is `skill-automation-package`. It is a thin installer frontend over the same Python-based automation bundle; the runtime and install core still live in Python.
+This remains a Python-installed automation bundle, not an npm runtime package.
 
 ## Why This Exists
 
@@ -20,7 +21,7 @@ After installation, an agent can:
 ## What It Installs
 
 - `.claude/tools/skill_agent.py`
-- `.claude/skills/project-skill-router/`
+- five packaged core default skills under `.claude/skills/`: `project-skill-router/` plus read-only helpers for project summary, repo structure analysis, docs entrypoint guidance, and change summary
 - optional `.claude/tests/test_skill_agent.py`
 - managed automation blocks for `AGENTS.md` and `CLAUDE.md`
 
@@ -126,7 +127,7 @@ python3 scripts/install.py --target /path/to/target-repo
 4. The installer will:
 
 - copy `.claude/tools/skill_agent.py`
-- copy `.claude/skills/project-skill-router/`
+- copy the packaged core default skills under `.claude/skills/`
 - optionally copy `.claude/tests/test_skill_agent.py`
 - insert managed automation blocks into `AGENTS.md` and `CLAUDE.md`
 - write `.claude/skill-automation-package.json`
@@ -193,7 +194,7 @@ Use this when the repository wants shared repo-local skills and shared entrypoin
 Usually commit:
 
 - `.claude/tools/skill_agent.py`
-- `.claude/skills/project-skill-router/`
+- the packaged core default skills under `.claude/skills/`
 - `.claude/tests/test_skill_agent.py` when installed
 - `AGENTS.md` and `CLAUDE.md` when you want the managed guidance blocks shared with the team
 
@@ -366,7 +367,7 @@ python3 scripts/install.py --target /path/to/target-repo --skip-claude
 ## Package Layout
 
 - `assets/.claude/tools/skill_agent.py`: resolver, search, scaffold, usage tracking, refresh review/update, and prune CLI
-- `assets/.claude/skills/project-skill-router/`: default reusable routing skill
+- `assets/.claude/skills/`: packaged core default skills, including the router and four read-only helper skills
 - `scripts/package_layout.py`: shared package manifest loader and asset copy helpers
 - `templates/agents_block.md`: managed block for `AGENTS.md`
 - `templates/claude_block.md`: managed block for `CLAUDE.md`

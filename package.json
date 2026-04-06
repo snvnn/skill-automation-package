@@ -1,6 +1,6 @@
 {
   "name": "skill-automation-package",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Portable repo-local skill automation bundle for Codex and Claude Code.",
   "bin": {
     "skill-automation-package": "bin/skill-automation-package.js"
@@ -11,6 +11,10 @@
     "scripts/package_layout.py",
     "assets/.claude/tools/skill_agent.py",
     "assets/.claude/skills/project-skill-router/",
+    "assets/.claude/skills/core-project-summary/",
+    "assets/.claude/skills/core-repo-structure-analysis/",
+    "assets/.claude/skills/core-docs-entrypoint-guidance/",
+    "assets/.claude/skills/core-change-summary/",
     "assets/.claude/tests/test_skill_agent.py",
     "templates/agents_block.md",
     "templates/claude_block.md",
@@ -30,7 +34,11 @@
   },
   "managed_assets": [
     ".claude/tools/skill_agent.py",
-    ".claude/skills/project-skill-router"
+    ".claude/skills/project-skill-router",
+    ".claude/skills/core-project-summary",
+    ".claude/skills/core-repo-structure-analysis",
+    ".claude/skills/core-docs-entrypoint-guidance",
+    ".claude/skills/core-change-summary"
   ],
   "optional_assets": [
     ".claude/tests/test_skill_agent.py"

@@ -1,0 +1,31 @@
+{
+  "category": "workflow",
+  "summary": "Map the repository layout, entrypoints, and likely edit locations without changing files.",
+  "management_mode": "locked",
+  "tags": [
+    "structure",
+    "navigation",
+    "read-only",
+    "codebase"
+  ],
+  "triggers": [
+    "analyze this repo structure",
+    "map this codebase",
+    "where is everything in this repo",
+    "find the right directory for this task"
+  ],
+  "steps": [
+    "Inspect the top-level directories, manifests, and obvious entrypoints.",
+    "Group the repository into major areas such as app code, tests, docs, and tooling.",
+    "Call out the directories or files most relevant to the current task.",
+    "Keep the result read-only and focused on navigation."
+  ],
+  "validation": [
+    "Reference the directories or files that support the structure map.",
+    "Avoid changing the repository while analyzing it."
+  ],
+  "examples": [
+    "Map this repository before I start editing files.",
+    "Show me where the main code, tests, docs, and tooling live."
+  ]
+}

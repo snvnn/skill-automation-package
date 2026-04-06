@@ -1,0 +1,31 @@
+{
+  "category": "docs",
+  "summary": "Summarize the repository purpose, main components, and current constraints from existing files.",
+  "management_mode": "locked",
+  "tags": [
+    "summary",
+    "onboarding",
+    "read-only",
+    "context"
+  ],
+  "triggers": [
+    "summarize this project",
+    "give me a project overview",
+    "what does this repo do",
+    "onboard me to this repository"
+  ],
+  "steps": [
+    "Read the root README, top-level manifests, and the most relevant entry directories.",
+    "Extract the repository purpose, main components, and current constraints from existing files only.",
+    "Keep the result read-only and grounded in the files you inspected.",
+    "Point to the next files or directories worth reading."
+  ],
+  "validation": [
+    "Name the files or directories used to build the summary.",
+    "Avoid unsupported claims or repo changes."
+  ],
+  "examples": [
+    "Summarize this repository before we start coding.",
+    "Give me a quick project overview and the most important files to read next."
+  ]
+}
