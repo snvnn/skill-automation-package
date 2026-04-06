@@ -153,7 +153,21 @@ class SkillAgentTests(unittest.TestCase):
         self.assertIn("cloudkit", payload["tags"])
         self.assertIn("## Validation", payload["markdown"])
         self.assertIn("## Example Requests", payload["markdown"])
+        self.assertIn('auto "<sub-task>" --json', payload["markdown"])
         self.assertFalse((self.skills_dir / payload["name"]).exists())
+
+    def test_bootstrap_blueprint_adds_nested_skill_routing_step(self) -> None:
+        blueprint = skill_agent.build_bootstrap_blueprint(
+            task="debug CloudKit sync regressions in the iOS app",
+            raw_name=None,
+            category="auto",
+            extra_tags=[],
+            existing_records=[],
+        )
+
+        self.assertTrue(
+            any('auto "<sub-task>" --json' in step for step in blueprint.steps)
+        )
 
     def test_auto_reuses_existing_skill_for_future_sessions(self) -> None:
         self.write_skill(

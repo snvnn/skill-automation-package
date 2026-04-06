@@ -6,7 +6,8 @@
     "registry",
     "search",
     "reuse",
-    "automation"
+    "automation",
+    "subtask"
   ],
   "triggers": [
     "find the right local skill for this task",
@@ -18,11 +19,14 @@
     "review skill usage health",
     "archive stale skills",
     "review stale skill metadata",
-    "update a reused local skill"
+    "update a reused local skill",
+    "route a workflow step into the skill automation set",
+    "resolve a reusable subtask while following a parent workflow"
   ],
   "steps": [
     "Start non-trivial tasks with the auto resolver so the repo can reuse or generate a skill.",
     "Reuse the best-matching skill when the score is strong enough.",
+    "If a workflow step grows into its own repeatable subtask, rerun the auto resolver for that subtask before expanding the parent flow.",
     "Preview generated skills before writing them when the task is new.",
     "Create a new skill only for repeatable multi-step work.",
     "Review usage and cleanup candidates before the skill catalog grows stale.",
@@ -39,6 +43,7 @@
     "Automatically resolve or create the right local skill for a new task.",
     "Preview a new local skill from a task description before saving it.",
     "Search existing local skills and reuse the best match instead of inventing a new workflow.",
+    "While following a parent workflow, route a reusable subtask through the automation set.",
     "Review reuse frequency and archive stale local skills.",
     "Inspect refresh candidates and update a stale but still useful skill."
   ],

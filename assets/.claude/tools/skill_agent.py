@@ -343,6 +343,7 @@ REFRESH_SCORE_HISTORY_LIMIT = 8
 REFRESH_TAG_LIMIT = 8
 REFRESH_TRIGGER_LIMIT = 6
 REFRESH_EXAMPLE_LIMIT = 6
+SUBTASK_ROUTING_COMMAND = 'python3 .claude/tools/skill_agent.py auto "<sub-task>" --json'
 
 
 @dataclass(slots=True)
@@ -1355,8 +1356,8 @@ def build_manual_blueprint(
     inferred_triggers = unique_strings(triggers) or infer_trigger_phrases(
         source_task, normalized_category
     )
-    inferred_steps = unique_strings(steps) or infer_steps(
-        normalized_category, normalized_summary
+    inferred_steps = ensure_nested_skill_routing_step(
+        unique_strings(steps) or infer_steps(normalized_category, normalized_summary)
     )
     inferred_validation = infer_validation(normalized_category)
     inferred_examples = infer_examples(
@@ -1404,7 +1405,9 @@ def build_bootstrap_blueprint(
     when = build_when_clause(source_task)
     focus = derive_focus_phrase(source_task)
     inferred_triggers = infer_trigger_phrases(source_task, normalized_category)
-    inferred_steps = infer_steps(normalized_category, source_task)
+    inferred_steps = ensure_nested_skill_routing_step(
+        infer_steps(normalized_category, source_task)
+    )
     inferred_validation = infer_validation(normalized_category)
     inferred_examples = infer_examples(
         normalized_category, summary, focus, inferred_triggers
@@ -1504,6 +1507,18 @@ def infer_steps(category: str, task_text: str) -> list[str]:
     steps = [build_task_intake_step(focus)]
     steps.extend(CATEGORY_RULES.get(category, CATEGORY_RULES[DEFAULT_CATEGORY])["steps"])
     return unique_strings(steps)
+
+
+def ensure_nested_skill_routing_step(steps: list[str]) -> list[str]:
+    return unique_strings([*steps, build_nested_skill_routing_step()])
+
+
+def build_nested_skill_routing_step() -> str:
+    return (
+        f"If any workflow step expands into a repeatable, non-trivial subtask, run "
+        f"`{SUBTASK_ROUTING_COMMAND}`, follow the reused or generated sub-skill, and then "
+        "return to the current workflow."
+    )
 
 
 def infer_validation(category: str) -> list[str]:
@@ -1675,6 +1690,10 @@ def build_skill_markdown(blueprint: SkillBlueprint) -> str:
         lines.append(f"- Tags: {', '.join(f'`{tag}`' for tag in blueprint.tags)}")
     lines.append(
         "- Start future task routing with `python3 .claude/tools/skill_agent.py auto \"<task>\" --json`."
+    )
+    lines.append(
+        f"- When a workflow step turns into its own reusable subtask, reroute it through "
+        f"`{SUBTASK_ROUTING_COMMAND}` before inventing an ad-hoc mini-flow."
     )
     lines.append(
         "- Search for this skill with `python3 .claude/tools/skill_agent.py search \"<task>\"`."
@@ -2220,7 +2239,9 @@ def build_blueprint_from_record(
         summary=clean_text(str(metadata.get("summary") or record.summary)),
         tags=unique_strings(metadata.get("tags", record.tags)),
         triggers=unique_strings(metadata.get("triggers", record.triggers)),
-        steps=unique_strings(metadata.get("steps", record.steps)),
+        steps=ensure_nested_skill_routing_step(
+            unique_strings(metadata.get("steps", record.steps))
+        ),
         related_skills=unique_strings(metadata.get("related_skills", record.related_skills)),
         validation=unique_strings(metadata.get("validation", record.validation)),
         examples=unique_strings(metadata.get("examples", record.examples)),
