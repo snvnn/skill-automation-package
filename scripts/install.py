@@ -3,27 +3,19 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-
-PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-ASSETS_ROOT = PACKAGE_ROOT / "assets"
-TEMPLATES_ROOT = PACKAGE_ROOT / "templates"
-PACKAGE_MANIFEST = PACKAGE_ROOT / "package.json"
-
-MANAGED_ASSETS = [
-    Path(".claude/tools/skill_agent.py"),
-    Path(".claude/skills/project-skill-router/SKILL.md"),
-    Path(".claude/skills/project-skill-router/skill.json"),
-]
-
-OPTIONAL_TEST_ASSETS = [
-    Path(".claude/tests/test_skill_agent.py"),
-]
+from package_layout import (
+    ASSETS_ROOT,
+    PACKAGE_MANIFEST,
+    PackageLayout,
+    TEMPLATES_ROOT,
+    copy_assets,
+    load_package_layout,
+)
 
 AGENTS_MARKERS = (
     "<!-- SKILL-AUTOMATION:AGENTS:START -->",
@@ -39,16 +31,19 @@ CLAUDE_MARKERS = (
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
-    package = json.loads(PACKAGE_MANIFEST.read_text(encoding="utf-8"))
+    layout = load_package_layout(PACKAGE_MANIFEST)
 
     target = args.target.resolve()
     target.mkdir(parents=True, exist_ok=True)
 
-    assets = list(MANAGED_ASSETS)
-    if not args.no_tests:
-        assets.extend(OPTIONAL_TEST_ASSETS)
-
-    copied_files = copy_assets(target=target, asset_paths=assets, dry_run=args.dry_run)
+    selected_assets = layout.selected_assets(include_optional=not args.no_tests)
+    copied_files = copy_assets(
+        source_root=ASSETS_ROOT,
+        destination_root=target,
+        asset_paths=selected_assets,
+        executable_assets=layout.executable_assets,
+        dry_run=args.dry_run,
+    )
     wrote_agents = False
     wrote_claude = False
 
@@ -73,8 +68,9 @@ def main() -> int:
     manifest_path = target / ".claude" / "skill-automation-package.json"
     wrote_manifest = write_install_manifest(
         manifest_path=manifest_path,
-        package=package,
-        assets=assets,
+        layout=layout,
+        target_root=target,
+        copied_files=copied_files,
         dry_run=args.dry_run,
     )
 
@@ -83,7 +79,7 @@ def main() -> int:
         refresh_registry(target)
         refreshed = True
 
-    print(f"Installed skill automation package {package['version']} into {target}")
+    print(f"Installed skill automation package {layout.version} into {target}")
     print(f"Copied files: {len(copied_files)}")
     print(f"Updated AGENTS.md: {'yes' if wrote_agents else 'no'}")
     print(f"Updated CLAUDE.md: {'yes' if wrote_claude else 'no'}")
@@ -123,26 +119,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Preview the installation without writing files.",
     )
     return parser
-
-
-def copy_assets(
-    *,
-    target: Path,
-    asset_paths: list[Path],
-    dry_run: bool,
-) -> list[Path]:
-    copied: list[Path] = []
-    for relative_path in asset_paths:
-        source = ASSETS_ROOT / relative_path
-        destination = target / relative_path
-        copied.append(destination)
-        if dry_run:
-            continue
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
-        if destination.name == "skill_agent.py":
-            destination.chmod(0o755)
-    return copied
 
 
 def install_managed_block(
@@ -188,15 +164,16 @@ def upsert_block(
 def write_install_manifest(
     *,
     manifest_path: Path,
-    package: dict[str, object],
-    assets: list[Path],
+    layout: PackageLayout,
+    target_root: Path,
+    copied_files: list[Path],
     dry_run: bool,
 ) -> bool:
     payload = {
-        "name": package["name"],
-        "version": package["version"],
+        "name": layout.name,
+        "version": layout.version,
         "installed_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
-        "assets": [str(path) for path in assets],
+        "assets": [str(path.relative_to(target_root)) for path in copied_files],
     }
     if not dry_run:
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
