@@ -54,6 +54,18 @@ Check reuse health:
 python3 .claude/tools/skill_agent.py usage
 ```
 
+Review stale or underspecified skills before patching them:
+
+```bash
+python3 .claude/tools/skill_agent.py review
+```
+
+Apply the safe metadata refreshes for the current candidates:
+
+```bash
+python3 .claude/tools/skill_agent.py update --apply
+```
+
 Preview cleanup candidates:
 
 ```bash
@@ -94,7 +106,7 @@ python3 scripts/install.py --target /path/to/target-repo --skip-claude
 
 ## Package Layout
 
-- `assets/.claude/tools/skill_agent.py`: resolver, search, scaffold, usage tracking, and prune CLI
+- `assets/.claude/tools/skill_agent.py`: resolver, search, scaffold, usage tracking, refresh review/update, and prune CLI
 - `assets/.claude/skills/project-skill-router/`: default reusable routing skill
 - `templates/agents_block.md`: managed block for `AGENTS.md`
 - `templates/claude_block.md`: managed block for `CLAUDE.md`

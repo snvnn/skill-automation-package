@@ -16,7 +16,9 @@
     "preview a generated skill",
     "automatically resolve or create a local skill",
     "review skill usage health",
-    "archive stale skills"
+    "archive stale skills",
+    "review stale skill metadata",
+    "update a reused local skill"
   ],
   "steps": [
     "Start non-trivial tasks with the auto resolver so the repo can reuse or generate a skill.",
@@ -24,18 +26,21 @@
     "Preview generated skills before writing them when the task is new.",
     "Create a new skill only for repeatable multi-step work.",
     "Review usage and cleanup candidates before the skill catalog grows stale.",
+    "Review stale or thin metadata before patching a frequently reused skill.",
     "Refresh the registry after skill changes."
   ],
   "validation": [
     "Confirm the generated skill includes reusable workflow steps and validation guidance.",
     "Refresh the registry after skill changes so the new skill is searchable.",
-    "Check usage reports before archiving any low-value skill."
+    "Check usage reports before archiving any low-value skill.",
+    "Preview refresh candidates before applying metadata updates to an existing skill."
   ],
   "examples": [
     "Automatically resolve or create the right local skill for a new task.",
     "Preview a new local skill from a task description before saving it.",
     "Search existing local skills and reuse the best match instead of inventing a new workflow.",
-    "Review reuse frequency and archive stale local skills."
+    "Review reuse frequency and archive stale local skills.",
+    "Inspect refresh candidates and update a stale but still useful skill."
   ],
   "related_skills": [
     "omc-reference"

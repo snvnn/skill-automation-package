@@ -189,6 +189,50 @@ class SkillAgentTests(unittest.TestCase):
         self.assertEqual(usage["skills"]["ocr-debug"]["reuse_count"], 1)
         self.assertEqual(usage["skills"]["ocr-debug"]["auto_hits"], 1)
 
+    def test_auto_reuse_can_patch_sparse_skill_metadata(self) -> None:
+        self.write_skill(
+            "ocr-debug",
+            description="Debug OCR extraction issues. Use when OCR parsing fails.",
+            metadata={
+                "category": "ios",
+                "summary": "Investigate OCR pipeline regressions.",
+                "tags": ["ocr"],
+                "triggers": ["ocr parsing fails"],
+            },
+        )
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_PATH),
+                "auto",
+                "vision extraction error on the OCR screen",
+                "--repo-root",
+                str(self.repo_root),
+                "--json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["action"], "reuse")
+        self.assertEqual(payload["skill_update"]["name"], "ocr-debug")
+        self.assertIn("examples", payload["skill_update"]["updated_fields"])
+
+        metadata = json.loads(
+            (self.skills_dir / "ocr-debug" / "skill.json").read_text(encoding="utf-8")
+        )
+        self.assertIn(
+            "Vision extraction error on the OCR screen.",
+            metadata["examples"],
+        )
+        self.assertGreaterEqual(len(metadata["triggers"]), 2)
+
+        usage = json.loads((self.skills_dir / "usage.json").read_text(encoding="utf-8"))
+        self.assertEqual(usage["skills"]["ocr-debug"]["update_count"], 1)
+
     def test_auto_creates_new_skill_and_refreshes_registry(self) -> None:
         result = subprocess.run(
             [
@@ -249,6 +293,109 @@ class SkillAgentTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["action"], "created")
         self.assertNotEqual(payload["created_skill"]["name"], "project-skill-router")
+
+    def test_review_reports_candidate_when_auto_update_is_skipped(self) -> None:
+        self.write_skill(
+            "ocr-debug",
+            description="Debug OCR extraction issues. Use when OCR parsing fails.",
+            metadata={
+                "category": "ios",
+                "summary": "Investigate OCR pipeline regressions.",
+                "tags": ["ocr"],
+                "triggers": ["ocr parsing fails"],
+            },
+        )
+
+        subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_PATH),
+                "auto",
+                "vision extraction error on the OCR screen",
+                "--repo-root",
+                str(self.repo_root),
+                "--skip-update",
+                "--json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        review = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_PATH),
+                "review",
+                "--repo-root",
+                str(self.repo_root),
+                "--json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        payload = json.loads(review.stdout)
+        self.assertEqual(payload[0]["name"], "ocr-debug")
+        self.assertEqual(payload[0]["status"], "candidate")
+        self.assertIn("examples", payload[0]["updated_fields"])
+
+    def test_update_apply_refreshes_candidate_skill(self) -> None:
+        self.write_skill(
+            "ocr-debug",
+            description="Debug OCR extraction issues. Use when OCR parsing fails.",
+            metadata={
+                "category": "ios",
+                "summary": "Investigate OCR pipeline regressions.",
+                "tags": ["ocr"],
+                "triggers": ["ocr parsing fails"],
+            },
+        )
+
+        subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_PATH),
+                "auto",
+                "vision extraction error on the OCR screen",
+                "--repo-root",
+                str(self.repo_root),
+                "--skip-update",
+                "--json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_PATH),
+                "update",
+                "ocr-debug",
+                "--repo-root",
+                str(self.repo_root),
+                "--apply",
+                "--json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload[0]["name"], "ocr-debug")
+        self.assertIn("examples", payload[0]["updated_fields"])
+
+        metadata = json.loads(
+            (self.skills_dir / "ocr-debug" / "skill.json").read_text(encoding="utf-8")
+        )
+        self.assertIn(
+            "Vision extraction error on the OCR screen.",
+            metadata["examples"],
+        )
 
     def test_usage_reports_candidate_for_old_unused_skill(self) -> None:
         old_timestamp = (datetime.now(UTC) - timedelta(days=60)).replace(microsecond=0).isoformat()

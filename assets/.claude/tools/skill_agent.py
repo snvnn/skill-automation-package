@@ -336,6 +336,13 @@ ACTIVE_RECENT_DAYS = 14
 PRUNE_NEVER_REUSED_DAYS = 21
 PRUNE_SINGLE_REUSE_DAYS = 45
 PRUNE_LOW_REUSE_DAYS = 90
+DEFAULT_MANAGEMENT_MODE = "patch"
+REFRESH_STALE_DAYS = 45
+REFRESH_LOW_SCORE_THRESHOLD = 10.0
+REFRESH_SCORE_HISTORY_LIMIT = 8
+REFRESH_TAG_LIMIT = 8
+REFRESH_TRIGGER_LIMIT = 6
+REFRESH_EXAMPLE_LIMIT = 6
 
 
 @dataclass(slots=True)
@@ -352,6 +359,7 @@ class SkillRecord:
     validation: list[str]
     examples: list[str]
     title: str
+    management_mode: str
 
 
 @dataclass(slots=True)
@@ -368,6 +376,20 @@ class SkillBlueprint:
     validation: list[str]
     examples: list[str]
     source_task: str
+
+
+@dataclass(slots=True)
+class SkillRefreshPlan:
+    name: str
+    path: str
+    status: str
+    reason: str
+    management_mode: str
+    changes: dict[str, Any]
+    recent_tasks: list[str]
+    reuse_count: int
+    avg_score: float | None
+    updated_days: int
 
 
 def main() -> int:
@@ -495,6 +517,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Do not write files when no reusable skill exists; return a creation preview instead.",
     )
+    auto_parser.add_argument(
+        "--skip-update",
+        action="store_true",
+        help="Skip automatic metadata refresh after reusing an existing skill.",
+    )
     auto_parser.add_argument("--json", action="store_true", help="Emit JSON.")
     auto_parser.add_argument(
         "--force", action="store_true", help="Overwrite an existing generated skill if needed."
@@ -514,6 +541,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="Filter by computed usage status.",
     )
     usage_parser.set_defaults(func=cmd_usage)
+
+    review_parser = subparsers.add_parser(
+        "review",
+        help="Review existing skills for safe metadata refresh candidates.",
+    )
+    add_shared_location_args(review_parser)
+    review_parser.add_argument("--json", action="store_true", help="Emit JSON.")
+    review_parser.add_argument(
+        "--status",
+        default="candidate",
+        choices=["all", "candidate", "healthy", "protected", "locked"],
+        help="Filter by computed refresh status.",
+    )
+    review_parser.set_defaults(func=cmd_review)
+
+    update_parser = subparsers.add_parser(
+        "update",
+        help="Preview or apply safe metadata refreshes for existing skills.",
+    )
+    add_shared_location_args(update_parser)
+    update_parser.add_argument(
+        "name",
+        nargs="?",
+        help="Specific skill name. When omitted, operate on all refresh candidates.",
+    )
+    update_parser.add_argument("--json", action="store_true", help="Emit JSON.")
+    update_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply the planned metadata updates instead of only previewing them.",
+    )
+    update_parser.set_defaults(func=cmd_update)
 
     prune_parser = subparsers.add_parser(
         "prune",
@@ -751,11 +810,22 @@ def cmd_auto(args: argparse.Namespace) -> int:
             task=args.task,
             score=score,
         )
+        skill_update = None
+        if not args.skip_update:
+            skill_update = maybe_auto_update_skill(
+                record=record,
+                skills_dir=skills_dir,
+                registry_path=registry_path,
+                usage_path=usage_path,
+                task=args.task,
+            )
         payload = {
             "action": "reuse",
             "task": clean_text(args.task),
             "match": match_payload(score, reason, record),
         }
+        if skill_update:
+            payload["skill_update"] = skill_update
         emit_auto_result(payload, as_json=args.json)
         return 0
 
@@ -820,6 +890,103 @@ def cmd_usage(args: argparse.Namespace) -> int:
             f"last={item['last_activity_days']}d age={item['age_days']}d"
         )
         print(f"  path: {item['path']}")
+        print(f"  reason: {item['reason']}")
+    return 0
+
+
+def cmd_review(args: argparse.Namespace) -> int:
+    records, skills_dir, _ = load_records_from_args(args)
+    plans = build_skill_refresh_plans(records, resolve_usage_path(skills_dir))
+    if args.status != "all":
+        plans = [plan for plan in plans if plan.status == args.status]
+
+    payload = [refresh_plan_payload(plan) for plan in plans]
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+
+    if not payload:
+        print("No skill refresh candidates.")
+        return 0
+
+    for item in payload:
+        print(f"[{item['status']}] {item['name']} ({item['management_mode']})")
+        print(f"  path: {item['path']}")
+        print(f"  reason: {item['reason']}")
+        if item["updated_fields"]:
+            print(f"  fields: {', '.join(item['updated_fields'])}")
+    return 0
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    records, skills_dir, registry_path = load_records_from_args(args)
+    usage_path = resolve_usage_path(skills_dir)
+    plans = build_skill_refresh_plans(records, usage_path)
+    if args.name:
+        normalized_name = normalize_name(args.name)
+        plans = [plan for plan in plans if plan.name == normalized_name]
+        if not plans:
+            raise SystemExit(f"No skill named {normalized_name} was found.")
+    else:
+        plans = [plan for plan in plans if plan.status == "candidate"]
+
+    payload = [refresh_plan_payload(plan) for plan in plans]
+    if not args.apply:
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            return 0
+        if not payload:
+            print("No skill refresh candidates.")
+            return 0
+        for item in payload:
+            print(f"[{item['status']}] {item['name']} ({item['management_mode']})")
+            print(f"  path: {item['path']}")
+            print(f"  reason: {item['reason']}")
+            if item["updated_fields"]:
+                print(f"  fields: {', '.join(item['updated_fields'])}")
+        print("Next: rerun with `--apply` to persist these metadata updates.")
+        return 0
+
+    if not plans:
+        if args.json:
+            print(json.dumps([], ensure_ascii=False, indent=2))
+        else:
+            print("No skill refresh candidates.")
+        return 0
+
+    records_by_name = {record.name: record for record in records}
+    updated: list[dict[str, Any]] = []
+    for plan in plans:
+        if plan.status != "candidate":
+            continue
+        record = records_by_name.get(plan.name)
+        if not record:
+            continue
+        updated.append(
+            apply_skill_update_plan(
+                record=record,
+                plan=plan,
+                usage_path=usage_path,
+                task=plan.recent_tasks[0] if plan.recent_tasks else f"refresh {plan.name}",
+                action="manual-update",
+            )
+        )
+
+    updated_records = discover_skills(skills_dir)
+    write_registry(updated_records, registry_path)
+
+    if args.json:
+        print(json.dumps(updated, ensure_ascii=False, indent=2))
+        return 0
+
+    if not updated:
+        print("No skill refresh candidates.")
+        return 0
+
+    for item in updated:
+        print(f"[updated] {item['name']} ({item['management_mode']})")
+        print(f"  path: {item['path']}")
+        print(f"  fields: {', '.join(item['updated_fields'])}")
         print(f"  reason: {item['reason']}")
     return 0
 
@@ -919,6 +1086,9 @@ def parse_skill(skill_file: Path) -> SkillRecord | None:
     related_skills = unique_strings(companion_metadata.get("related_skills", []))
     validation = unique_strings(companion_metadata.get("validation", []))
     examples = unique_strings(companion_metadata.get("examples", []))
+    management_mode = normalize_management_mode(
+        companion_metadata.get("management_mode", DEFAULT_MANAGEMENT_MODE)
+    )
 
     if not description:
         description = summary
@@ -936,6 +1106,7 @@ def parse_skill(skill_file: Path) -> SkillRecord | None:
         validation=validation,
         examples=examples,
         title=title,
+        management_mode=management_mode,
     )
 
 
@@ -984,6 +1155,15 @@ def load_companion_metadata(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {}
     return payload
+
+
+def normalize_management_mode(value: Any) -> str:
+    if not isinstance(value, str):
+        return DEFAULT_MANAGEMENT_MODE
+    normalized = clean_text(value).lower()
+    if normalized in {"locked", "managed", "patch"}:
+        return normalized
+    return DEFAULT_MANAGEMENT_MODE
 
 
 def extract_title(body: str) -> str:
@@ -1379,6 +1559,7 @@ def create_skill(
         "validation": blueprint.validation,
         "examples": blueprint.examples,
         "source_task": blueprint.source_task,
+        "management_mode": DEFAULT_MANAGEMENT_MODE,
         "created_at": utc_now(),
         "updated_at": utc_now(),
     }
@@ -1403,6 +1584,7 @@ def create_skill(
         validation=blueprint.validation,
         examples=blueprint.examples,
         title=blueprint.title,
+        management_mode=DEFAULT_MANAGEMENT_MODE,
     )
 
 
@@ -1452,7 +1634,7 @@ def build_skill_markdown(blueprint: SkillBlueprint) -> str:
         "- Search for this skill with `python3 .claude/tools/skill_agent.py search \"<task>\"`."
     )
     lines.append(
-        "- Review reuse health with `python3 .claude/tools/skill_agent.py usage` and archive stale skills with `python3 .claude/tools/skill_agent.py prune --apply`."
+        "- Review reuse health with `python3 .claude/tools/skill_agent.py usage`, inspect refresh candidates with `python3 .claude/tools/skill_agent.py review`, and archive stale skills with `python3 .claude/tools/skill_agent.py prune --apply`."
     )
     lines.append(
         "- Preview a generated skill with `python3 .claude/tools/skill_agent.py bootstrap \"<task>\" --dry-run --json`."
@@ -1541,6 +1723,12 @@ def emit_auto_result(payload: dict[str, Any], *, as_json: bool) -> None:
         print(f"Skill: {match['name']}")
         print(f"Path: {match['path']}")
         print(f"Reason: {match['reason']}")
+        if payload.get("skill_update"):
+            update = payload["skill_update"]
+            print(
+                "Updated fields: "
+                + ", ".join(update["updated_fields"])
+            )
         print("Next: open the skill and follow its workflow.")
         return
 
@@ -1611,8 +1799,9 @@ def record_skill_event(
     entry["reuse_count"] = int(entry.get("reuse_count", 0))
     entry["create_count"] = int(entry.get("create_count", 0))
     entry["auto_hits"] = int(entry.get("auto_hits", 0))
+    entry["update_count"] = int(entry.get("update_count", 0))
 
-    if action.startswith("auto-"):
+    if action in {"auto-reuse", "auto-created"}:
         entry["auto_hits"] += 1
     if "reuse" in action:
         entry["reuse_count"] += 1
@@ -1620,8 +1809,16 @@ def record_skill_event(
     if "create" in action or "bootstrap" in action:
         entry["create_count"] += 1
         entry["last_created_at"] = now
+    if "update" in action:
+        entry["update_count"] += 1
+        entry["last_updated_at"] = now
     if score is not None:
         entry["last_score"] = round(score, 2)
+        score_history = entry.get("score_history", [])
+        if not isinstance(score_history, list):
+            score_history = []
+        score_history.append({"at": now, "score": round(score, 2)})
+        entry["score_history"] = score_history[-REFRESH_SCORE_HISTORY_LIMIT:]
 
     history = entry.get("history", [])
     if not isinstance(history, list):
@@ -1636,6 +1833,353 @@ def record_skill_event(
     entry["history"] = history[-USAGE_HISTORY_LIMIT:]
 
     write_usage_store(usage_path, payload)
+
+
+def maybe_auto_update_skill(
+    *,
+    record: SkillRecord,
+    skills_dir: Path,
+    registry_path: Path,
+    usage_path: Path,
+    task: str,
+) -> dict[str, Any] | None:
+    usage_store = load_usage_store(usage_path)
+    entry = usage_store.get("skills", {}).get(record.name, {})
+    plan = build_skill_refresh_plan(record, entry)
+    if plan.status != "candidate":
+        return None
+
+    updated = apply_skill_update_plan(
+        record=record,
+        plan=plan,
+        usage_path=usage_path,
+        task=task,
+        action="auto-update",
+    )
+    updated_records = discover_skills(skills_dir)
+    write_registry(updated_records, registry_path)
+    return updated
+
+
+def build_skill_refresh_plans(
+    records: list[SkillRecord],
+    usage_path: Path,
+) -> list[SkillRefreshPlan]:
+    usage_store = load_usage_store(usage_path)
+    skills = usage_store.get("skills", {})
+    plans = [build_skill_refresh_plan(record, skills.get(record.name, {})) for record in records]
+    plans.sort(
+        key=lambda plan: (
+            refresh_status_rank(plan.status),
+            plan.updated_days * -1,
+            plan.name,
+        )
+    )
+    return plans
+
+
+def build_skill_refresh_plan(
+    record: SkillRecord,
+    entry: dict[str, Any],
+) -> SkillRefreshPlan:
+    metadata = load_companion_metadata(Path(record.path) / "skill.json")
+    management_mode = normalize_management_mode(
+        metadata.get("management_mode", record.management_mode)
+    )
+    recent_tasks = recent_reuse_tasks(entry)
+    reuse_count = int(entry.get("reuse_count", 0))
+    avg_score = average_recent_score(entry)
+    updated_at = (
+        parse_datetime(metadata.get("updated_at"))
+        or parse_datetime(metadata.get("created_at"))
+        or filesystem_timestamp(Path(record.path) / "skill.json")
+        or filesystem_timestamp(Path(record.path) / "SKILL.md")
+        or datetime.now(UTC)
+    )
+    updated_days = max((datetime.now(UTC) - updated_at).days, 0)
+
+    if record.name in PROTECTED_SKILLS:
+        return SkillRefreshPlan(
+            name=record.name,
+            path=record.path,
+            status="protected",
+            reason="Core routing or reference skill.",
+            management_mode=management_mode,
+            changes={},
+            recent_tasks=recent_tasks,
+            reuse_count=reuse_count,
+            avg_score=avg_score,
+            updated_days=updated_days,
+        )
+
+    if management_mode == "locked":
+        return SkillRefreshPlan(
+            name=record.name,
+            path=record.path,
+            status="locked",
+            reason="Locked skills require explicit manual edits.",
+            management_mode=management_mode,
+            changes={},
+            recent_tasks=recent_tasks,
+            reuse_count=reuse_count,
+            avg_score=avg_score,
+            updated_days=updated_days,
+        )
+
+    reasons: list[str] = []
+    if reuse_count >= 1 and len(record.triggers) < 2 and recent_tasks:
+        reasons.append("Trigger coverage is too thin for a reused skill.")
+    if reuse_count >= 1 and len(record.examples) < 2 and recent_tasks:
+        reasons.append("Example requests are too thin for a reused skill.")
+    if reuse_count >= 2 and avg_score is not None and avg_score < REFRESH_LOW_SCORE_THRESHOLD:
+        reasons.append("Recent reuse scores are low enough that metadata should be tightened.")
+    if reuse_count >= 2 and updated_days >= REFRESH_STALE_DAYS and recent_tasks:
+        reasons.append(f"Metadata has not been refreshed for {REFRESH_STALE_DAYS}+ days.")
+
+    known_tokens = known_record_tokens(record)
+    novel_tokens = [
+        token
+        for token in ordered_tokens(" ".join(recent_tasks))
+        if token not in known_tokens and token not in LOW_SIGNAL_TOKENS
+    ]
+    if reuse_count >= 2 and len(novel_tokens) >= 2:
+        reasons.append("Recent reuse requests contain new terms not represented in the skill metadata.")
+
+    changes = build_refresh_metadata_changes(
+        record=record,
+        metadata=metadata,
+        recent_tasks=recent_tasks,
+        management_mode=management_mode,
+    )
+    actionable_fields = [
+        field for field in changes if field not in {"updated_at", "management_mode"}
+    ]
+    if not reasons or not actionable_fields:
+        return SkillRefreshPlan(
+            name=record.name,
+            path=record.path,
+            status="healthy",
+            reason="No safe metadata refresh is needed right now.",
+            management_mode=management_mode,
+            changes={},
+            recent_tasks=recent_tasks,
+            reuse_count=reuse_count,
+            avg_score=avg_score,
+            updated_days=updated_days,
+        )
+
+    return SkillRefreshPlan(
+        name=record.name,
+        path=record.path,
+        status="candidate",
+        reason=" ".join(reasons[:3]),
+        management_mode=management_mode,
+        changes=changes,
+        recent_tasks=recent_tasks,
+        reuse_count=reuse_count,
+        avg_score=avg_score,
+        updated_days=updated_days,
+    )
+
+
+def recent_reuse_tasks(entry: dict[str, Any], *, limit: int = 4) -> list[str]:
+    history = entry.get("history", [])
+    if not isinstance(history, list):
+        history = []
+    tasks: list[str] = []
+    seen: set[str] = set()
+    for item in reversed(history):
+        if not isinstance(item, dict):
+            continue
+        action = str(item.get("action") or "")
+        task = clean_text(str(item.get("task") or ""))
+        if "reuse" not in action or not task or task in seen:
+            continue
+        tasks.append(task)
+        seen.add(task)
+        if len(tasks) >= limit:
+            break
+    fallback = clean_text(str(entry.get("last_task") or ""))
+    if fallback and fallback not in seen and len(tasks) < limit:
+        tasks.append(fallback)
+    return tasks
+
+
+def average_recent_score(entry: dict[str, Any], *, limit: int = 5) -> float | None:
+    score_history = entry.get("score_history", [])
+    if not isinstance(score_history, list):
+        score_history = []
+    values: list[float] = []
+    for item in score_history[-limit:]:
+        if not isinstance(item, dict):
+            continue
+        score = item.get("score")
+        if isinstance(score, (int, float)):
+            values.append(float(score))
+    if not values:
+        return None
+    return round(sum(values) / len(values), 2)
+
+
+def known_record_tokens(record: SkillRecord) -> set[str]:
+    token_fields = [
+        record.name.replace("-", " "),
+        record.category,
+        record.description,
+        record.summary,
+        " ".join(record.tags),
+        " ".join(record.triggers),
+        " ".join(record.examples),
+    ]
+    tokens: set[str] = set()
+    for field in token_fields:
+        tokens |= tokenize(field)
+    return tokens
+
+
+def build_refresh_metadata_changes(
+    *,
+    record: SkillRecord,
+    metadata: dict[str, Any],
+    recent_tasks: list[str],
+    management_mode: str,
+) -> dict[str, Any]:
+    changes: dict[str, Any] = {}
+    existing_tags = unique_strings(metadata.get("tags", record.tags))
+    existing_triggers = unique_strings(metadata.get("triggers", record.triggers))
+    existing_examples = unique_strings(metadata.get("examples", record.examples))
+
+    joined_tasks = " ".join(recent_tasks)
+    merged_tags = merge_limited_strings(
+        existing_tags,
+        infer_tags(joined_tasks, record.category, []),
+        limit=REFRESH_TAG_LIMIT,
+    )
+    merged_triggers = merge_limited_strings(
+        existing_triggers,
+        [
+            trigger
+            for task in recent_tasks
+            for trigger in infer_trigger_phrases(task, record.category)
+        ],
+        limit=REFRESH_TRIGGER_LIMIT,
+    )
+    merged_examples = merge_limited_strings(
+        existing_examples,
+        [ensure_sentence(sentence_case(task)) for task in recent_tasks],
+        limit=REFRESH_EXAMPLE_LIMIT,
+    )
+
+    if merged_tags != existing_tags:
+        changes["tags"] = merged_tags
+    if merged_triggers != existing_triggers:
+        changes["triggers"] = merged_triggers
+    if merged_examples != existing_examples:
+        changes["examples"] = merged_examples
+    if normalize_management_mode(metadata.get("management_mode")) != management_mode:
+        changes["management_mode"] = management_mode
+    if changes:
+        changes["updated_at"] = utc_now()
+    return changes
+
+
+def merge_limited_strings(existing: list[str], additions: list[str], *, limit: int) -> list[str]:
+    merged = list(existing)
+    seen = set(existing)
+    for item in additions:
+        cleaned = clean_text(item)
+        if not cleaned or cleaned in seen:
+            continue
+        merged.append(cleaned)
+        seen.add(cleaned)
+        if len(merged) >= limit:
+            break
+    return merged
+
+
+def refresh_status_rank(status: str) -> int:
+    order = {
+        "candidate": 0,
+        "healthy": 1,
+        "locked": 2,
+        "protected": 3,
+    }
+    return order.get(status, 99)
+
+
+def refresh_plan_payload(plan: SkillRefreshPlan) -> dict[str, Any]:
+    return {
+        "name": plan.name,
+        "path": plan.path,
+        "status": plan.status,
+        "reason": plan.reason,
+        "management_mode": plan.management_mode,
+        "updated_fields": sorted(plan.changes.keys()),
+        "recent_tasks": plan.recent_tasks,
+        "reuse_count": plan.reuse_count,
+        "avg_score": plan.avg_score,
+        "updated_days": plan.updated_days,
+    }
+
+
+def apply_skill_update_plan(
+    *,
+    record: SkillRecord,
+    plan: SkillRefreshPlan,
+    usage_path: Path,
+    task: str,
+    action: str,
+) -> dict[str, Any]:
+    skill_dir = Path(record.path)
+    metadata_path = skill_dir / "skill.json"
+    metadata = load_companion_metadata(metadata_path)
+    metadata.update(plan.changes)
+    metadata_path.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    if plan.management_mode == "managed":
+        blueprint = build_blueprint_from_record(record, metadata)
+        (skill_dir / "SKILL.md").write_text(
+            build_skill_markdown(blueprint),
+            encoding="utf-8",
+        )
+
+    updated_record = parse_skill(skill_dir / "SKILL.md") or record
+    record_skill_event(
+        usage_path=usage_path,
+        record=updated_record,
+        action=action,
+        task=task,
+    )
+    return {
+        "name": updated_record.name,
+        "path": updated_record.path,
+        "management_mode": plan.management_mode,
+        "updated_fields": sorted(plan.changes.keys()),
+        "reason": plan.reason,
+    }
+
+
+def build_blueprint_from_record(
+    record: SkillRecord,
+    metadata: dict[str, Any],
+) -> SkillBlueprint:
+    return SkillBlueprint(
+        name=record.name,
+        title=record.title,
+        description=record.description,
+        category=normalize_category(str(metadata.get("category") or record.category), record.summary),
+        summary=clean_text(str(metadata.get("summary") or record.summary)),
+        tags=unique_strings(metadata.get("tags", record.tags)),
+        triggers=unique_strings(metadata.get("triggers", record.triggers)),
+        steps=unique_strings(metadata.get("steps", record.steps)),
+        related_skills=unique_strings(metadata.get("related_skills", record.related_skills)),
+        validation=unique_strings(metadata.get("validation", record.validation)),
+        examples=unique_strings(metadata.get("examples", record.examples)),
+        source_task=clean_text(str(metadata.get("source_task") or "")),
+    )
 
 
 def build_skill_usage_summaries(
@@ -1693,9 +2237,11 @@ def summarize_skill_usage(record: SkillRecord, entry: dict[str, Any]) -> dict[st
         "name": record.name,
         "path": record.path,
         "category": record.category,
+        "management_mode": record.management_mode,
         "reuse_count": reuse_count,
         "create_count": create_count,
         "auto_hits": int(entry.get("auto_hits", 0)),
+        "update_count": int(entry.get("update_count", 0)),
         "age_days": age_days,
         "last_activity_days": last_activity_days,
         "status": status,
