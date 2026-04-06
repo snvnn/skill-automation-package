@@ -1,0 +1,38 @@
+{
+  "category": "workflow",
+  "summary": "Route agents to the best existing local skill, or scaffold a new reusable one.",
+  "tags": [
+    "skills",
+    "registry",
+    "search",
+    "reuse",
+    "automation"
+  ],
+  "triggers": [
+    "find the right local skill for this task",
+    "search reusable workflow",
+    "create a new repo-local skill",
+    "refresh the skill registry",
+    "preview a generated skill",
+    "automatically resolve or create a local skill"
+  ],
+  "steps": [
+    "Start non-trivial tasks with the auto resolver so the repo can reuse or generate a skill.",
+    "Reuse the best-matching skill when the score is strong enough.",
+    "Preview generated skills before writing them when the task is new.",
+    "Create a new skill only for repeatable multi-step work.",
+    "Refresh the registry after skill changes."
+  ],
+  "validation": [
+    "Confirm the generated skill includes reusable workflow steps and validation guidance.",
+    "Refresh the registry after skill changes so the new skill is searchable."
+  ],
+  "examples": [
+    "Automatically resolve or create the right local skill for a new task.",
+    "Preview a new local skill from a task description before saving it.",
+    "Search existing local skills and reuse the best match instead of inventing a new workflow."
+  ],
+  "related_skills": [
+    "omc-reference"
+  ]
+}
