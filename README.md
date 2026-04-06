@@ -167,6 +167,8 @@ python3 scripts/sync_assets.py
 
 Then reinstall into a target repository or regenerate the published package commit as needed.
 
+When you need to publish changes from a stale or dirty local checkout, use the documented worktree-based flow in `docs/publish-workflow.md` instead of committing directly on the old checkout.
+
 ## Verification
 
 From a repository that contains the package source and packaged tests:
