@@ -2,7 +2,7 @@
 
 Portable repo-local skill automation for Codex and Claude Code.
 
-This repository ships a Python-installed automation bundle. It is not an npm runtime package; `package.json` is used here as a package manifest for managed assets, versioning, and install metadata.
+The published npm package is `skill-automation-package`. It is a thin installer frontend over the same Python-based automation bundle; the runtime and install core still live in Python.
 
 ## Why This Exists
 
@@ -26,26 +26,26 @@ After installation, an agent can:
 
 ## Quick Start
 
-Install into another repository:
-
-```bash
-python3 scripts/install.py --target /path/to/target-repo
-```
-
-Or use the npm wrapper entrypoint:
+Use the published package to install into another repository:
 
 ```bash
 npx skill-automation-package install --target /path/to/target-repo
 ```
 
-To update an existing target without forcing an unnecessary reinstall when it is already current:
+Update an existing target with version-aware reinstall behavior:
 
 ```bash
 npx skill-automation-package update --target /path/to/target-repo
 ```
 
-The npm entrypoint is a thin wrapper around the Python installer. It does not replace the Python core, and Python 3.10 or newer is still required.
-If you already have this repository checked out locally, the direct `python3 scripts/install.py ...` path remains fully supported.
+Python 3.10 or newer is still required. The npm entrypoint is a thin wrapper around the Python installer and does not replace the Python core.
+
+If you already have this repository checked out locally, the direct Python install path remains fully supported:
+
+```bash
+python3 scripts/install.py --target /path/to/target-repo
+```
+
 `install` always allows reinstall. `update` is version-aware and only reinstalls when the target reports an older installed version.
 Before reinstalling, the wrapper checks `.claude/skill-automation-package.json` in the target repo and reports whether the target is not installed, already at the current version, or behind the current package version.
 
@@ -98,25 +98,32 @@ The exact skill name is inferred from the task, but the flow is stable: reuse wh
 
 ## Installation Guide
 
-Use this package when you have the package repository checked out locally and want to install the automation bundle into another repository.
+Use this package when you want to install the automation bundle into another repository. The published npm package is the default entrypoint, and the direct Python path remains available when you are working from a local checkout of this repository.
 
 ### Prerequisites
 
 - Python 3.10 or newer
-- for the npm entrypoint, Node.js 18 or newer
+- Node.js 18 or newer
+- npm or `npx` for the published package entrypoint
 - a target repository where you want repo-local skill automation under `.claude/`
 - write access to the target repository
 
 ### Standard Install
 
 1. Choose the target repository.
-2. Run the installer from this package repository:
+2. Use the published package:
+
+```bash
+npx skill-automation-package install --target /path/to/target-repo
+```
+
+3. Or, if you already have this repository checked out locally, run the Python installer directly:
 
 ```bash
 python3 scripts/install.py --target /path/to/target-repo
 ```
 
-3. The installer will:
+4. The installer will:
 
 - copy `.claude/tools/skill_agent.py`
 - copy `.claude/skills/project-skill-router/`
@@ -124,6 +131,20 @@ python3 scripts/install.py --target /path/to/target-repo
 - insert managed automation blocks into `AGENTS.md` and `CLAUDE.md`
 - write `.claude/skill-automation-package.json`
 - refresh `.claude/skills/registry.json`
+
+### Install Vs Update
+
+Install always runs and allows a deliberate reinstall:
+
+```bash
+npx skill-automation-package install --target /path/to/target-repo
+```
+
+Update is version-aware and skips work when the target is already current:
+
+```bash
+npx skill-automation-package update --target /path/to/target-repo
+```
 
 ### Why `AGENTS.md` And `CLAUDE.md` Are Updated
 
