@@ -1,6 +1,6 @@
 {
   "name": "skill-automation-package",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Portable repo-local skill automation bundle for Codex and Claude Code.",
   "bin": {
     "skill-automation-package": "bin/skill-automation-package.js"
