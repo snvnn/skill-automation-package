@@ -14,7 +14,7 @@ python3 .claude/tools/skill_agent.py auto "add tests" --json
 
 - no setup required beyond `npx` and Python 3.10+
 - works on existing repositories
-- safe: does not modify user-authored files
+- safe: uses bounded managed blocks for generated guidance and ignore rules
 
 The published npm package is `skill-automation-package`. It is a thin installer frontend over the same Python-based automation bundle; the runtime and install core still live in Python.
 This remains a Python-installed automation bundle, not an npm runtime package.
@@ -51,7 +51,7 @@ Python 3.10 or newer is still required. The npm entrypoint is a thin wrapper aro
 `install` always allows reinstall. `update` is version-aware and only reinstalls when the target reports an older installed version.
 Before reinstalling, the wrapper checks `.claude/skill-automation-package.json` in the target repo and reports whether the target is not installed, already at the current version, or behind the current package version.
 
-The installer copies the packaged assets, updates managed blocks in `AGENTS.md` and `CLAUDE.md` unless skipped, writes `.claude/skill-automation-package.json`, and refreshes `.claude/skills/registry.json`.
+The installer copies the packaged assets, updates managed blocks in `AGENTS.md` and `CLAUDE.md` unless skipped, updates a generated-state `.gitignore` block unless disabled, writes `.claude/skill-automation-package.json`, and refreshes `.claude/skills/registry.json`.
 
 Then, inside the target repository, start non-trivial work with:
 
@@ -140,6 +140,7 @@ python3 scripts/install.py --target /path/to/target-repo
 - copy the packaged core default skills under `.claude/skills/`
 - optionally copy `.claude/tests/test_skill_agent.py`
 - insert managed automation blocks into `AGENTS.md` and `CLAUDE.md`
+- insert a managed generated-state block into `.gitignore` unless disabled
 - write `.claude/skill-automation-package.json`
 - refresh `.claude/skills/registry.json`
 
@@ -185,17 +186,24 @@ You should see the packaged core skills in the list, including the router, and `
 - Skip the packaged test file: `python3 scripts/install.py --target /path/to/target-repo --no-tests`
 - Skip managed `AGENTS.md`: `python3 scripts/install.py --target /path/to/target-repo --skip-agents`
 - Skip managed `CLAUDE.md`: `python3 scripts/install.py --target /path/to/target-repo --skip-claude`
+- Disable `.gitignore` updates: `python3 scripts/install.py --target /path/to/target-repo --gitignore-mode none`
+- Ignore the whole local-only install: `python3 scripts/install.py --target /path/to/target-repo --gitignore-mode local-only`
 
 ## Managed File Behavior
 
 - If `AGENTS.md` or `CLAUDE.md` does not exist, install creates the file and inserts the managed block.
 - If both package markers already exist, install replaces only the content inside that managed block.
 - If the markers are missing, install appends the managed block to the end of the existing file.
+- By default, install also creates or updates a managed `.gitignore` block for generated state only.
+- Use `--gitignore-mode none` to leave `.gitignore` untouched, or `--gitignore-mode local-only` when the whole install should stay local to one checkout.
 - `--dry-run` previews the install result without creating the target directory or writing package files, and its status lines use `Would ...` wording for changes that are only being previewed.
+- Dry-run output includes package file groups for files that would be created, updated, left unchanged, or reported as previously installed but no longer shipped.
+- Dry-run output also reports whether each managed guidance file would be created, replaced, appended, left unchanged, or skipped.
 
 ## Target Repo Git Hygiene
 
 Decide up front whether the installed automation should be shared through version control or kept local to one checkout.
+The default installer policy is shared-friendly: it adds only generated-state patterns to `.gitignore`.
 
 ### Shared Automation In Version Control
 
@@ -208,7 +216,7 @@ Usually commit:
 - `.claude/tests/test_skill_agent.py` when installed
 - `AGENTS.md` and `CLAUDE.md` when you want the managed guidance blocks shared with the team
 
-Usually ignore:
+The installer adds this generated-state block by default:
 
 ```gitignore
 .claude/skills/registry.json
@@ -229,10 +237,11 @@ Use this when the install is only for one developer checkout and should not affe
 
 Typical approach:
 
-- install with `--skip-agents --skip-claude` if you do not want top-level guidance files touched
+- install with `--gitignore-mode local-only`
+- add `--skip-agents --skip-claude` if you do not want top-level guidance files touched
 - ignore the installed automation tree and any optional managed docs
 
-Example:
+The local-only mode manages this block:
 
 ```gitignore
 .claude/
@@ -267,7 +276,17 @@ npx skill-automation-package update --target /path/to/target-repo
 
 - `update` is a version-aware reinstall, not a partial update.
 - `update` blocks implicit downgrade attempts; use `install` only when you intentionally want to replace the target with the current package version.
-- If install metadata is malformed, `update` stops and asks you to use `install` for a deliberate reinstall.
+- If install metadata is malformed, incomplete, for a different package, or missing a usable asset list, `update` stops and asks you to use `install` for a deliberate reinstall.
+
+Metadata recovery behavior:
+
+| State | `install` behavior | `update` behavior |
+| --- | --- | --- |
+| Missing metadata | Proceeds as a new install | Stops and asks for `install` |
+| Same version | Reinstalls deliberately | No-ops |
+| Older version | Reinstalls deliberately | Runs reinstall |
+| Newer version | Warns and reinstalls deliberately | Blocks downgrade |
+| Malformed or incomplete metadata | Warns and reinstalls deliberately | Stops and asks for `install` |
 
 What gets updated in place:
 
@@ -372,6 +391,18 @@ Do not update `CLAUDE.md`:
 
 ```bash
 python3 scripts/install.py --target /path/to/target-repo --skip-claude
+```
+
+Do not update `.gitignore`:
+
+```bash
+python3 scripts/install.py --target /path/to/target-repo --gitignore-mode none
+```
+
+Use a local-only `.gitignore` policy:
+
+```bash
+python3 scripts/install.py --target /path/to/target-repo --gitignore-mode local-only
 ```
 
 ## Package Layout

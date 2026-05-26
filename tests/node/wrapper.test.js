@@ -56,6 +56,16 @@ function writeMalformedMetadata(targetRoot, raw) {
   fs.writeFileSync(path.join(metadataDir, "skill-automation-package.json"), raw, "utf8");
 }
 
+function writeCustomMetadata(targetRoot, metadata) {
+  const metadataDir = path.join(targetRoot, ".claude");
+  fs.mkdirSync(metadataDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(metadataDir, "skill-automation-package.json"),
+    JSON.stringify(metadata, null, 2) + "\n",
+    "utf8",
+  );
+}
+
 function writeLauncher(launcherDir, name) {
   const script = `#!/bin/sh
 if [ "$1" = "-c" ]; then
@@ -352,6 +362,38 @@ test("install proceeds with a warning when existing metadata is malformed", (t) 
   assert.equal(invocation.launcher, "python3");
 });
 
+test("install proceeds with a warning when metadata belongs to another package", (t) => {
+  const packageRoot = createFixturePackage(t);
+  const launcherDir = makeTempDir("skill-wrapper-launchers-");
+  const targetRoot = makeTempDir("skill-wrapper-target-");
+  const logFile = path.join(makeTempDir("skill-wrapper-log-"), "install-wrong-package.log");
+
+  t.after(() => fs.rmSync(launcherDir, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(targetRoot, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(path.dirname(logFile), { recursive: true, force: true }));
+
+  writeLauncher(launcherDir, "python3");
+  writeCustomMetadata(targetRoot, {
+    name: "other-package",
+    version: "1.0.0",
+    installed_at: "2026-04-06T00:00:00+00:00",
+    assets: [],
+  });
+
+  const result = runWrapper({
+    packageRoot,
+    cwd: packageRoot,
+    launcherDir,
+    args: ["--target", targetRoot, "--dry-run"],
+    logFile,
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /belongs to package "other-package" instead of skill-automation-package/);
+  const invocation = parseLog(logFile);
+  assert.equal(invocation.launcher, "python3");
+});
+
 test("update fails when the target is not installed", (t) => {
   const packageRoot = createFixturePackage(t);
   const launcherDir = makeTempDir("skill-wrapper-empty-launchers-");
@@ -485,6 +527,70 @@ test("update blocks when existing metadata is malformed", (t) => {
 
   assert.equal(result.status, 1);
   assert.match(result.stderr, /existing install metadata .* could not be parsed as JSON/);
+  assert.match(result.stderr, /use install to force a reinstall/);
+  assert.equal(fs.existsSync(logFile), false);
+});
+
+test("update blocks when existing metadata belongs to another package", (t) => {
+  const packageRoot = createFixturePackage(t);
+  const launcherDir = makeTempDir("skill-wrapper-empty-launchers-");
+  const targetRoot = makeTempDir("skill-wrapper-target-");
+  const logFile = path.join(makeTempDir("skill-wrapper-log-"), "update-wrong-package.log");
+
+  t.after(() => fs.rmSync(launcherDir, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(targetRoot, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(path.dirname(logFile), { recursive: true, force: true }));
+
+  writeCustomMetadata(targetRoot, {
+    name: "other-package",
+    version: "1.0.0",
+    installed_at: "2026-04-06T00:00:00+00:00",
+    assets: [],
+  });
+
+  const result = runWrapper({
+    packageRoot,
+    cwd: packageRoot,
+    launcherDir,
+    subcommand: "update",
+    args: ["--target", targetRoot, "--dry-run"],
+    logFile,
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /belongs to package "other-package" instead of skill-automation-package/);
+  assert.match(result.stderr, /use install to force a reinstall/);
+  assert.equal(fs.existsSync(logFile), false);
+});
+
+test("update blocks when existing metadata has an invalid assets list", (t) => {
+  const packageRoot = createFixturePackage(t);
+  const launcherDir = makeTempDir("skill-wrapper-empty-launchers-");
+  const targetRoot = makeTempDir("skill-wrapper-target-");
+  const logFile = path.join(makeTempDir("skill-wrapper-log-"), "update-invalid-assets.log");
+
+  t.after(() => fs.rmSync(launcherDir, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(targetRoot, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(path.dirname(logFile), { recursive: true, force: true }));
+
+  writeCustomMetadata(targetRoot, {
+    name: "skill-automation-package",
+    version: "1.0.0",
+    installed_at: "2026-04-06T00:00:00+00:00",
+    assets: "not-a-list",
+  });
+
+  const result = runWrapper({
+    packageRoot,
+    cwd: packageRoot,
+    launcherDir,
+    subcommand: "update",
+    args: ["--target", targetRoot, "--dry-run"],
+    logFile,
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /does not contain a usable assets list/);
   assert.match(result.stderr, /use install to force a reinstall/);
   assert.equal(fs.existsSync(logFile), false);
 });

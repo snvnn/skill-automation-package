@@ -1,6 +1,6 @@
 {
   "name": "skill-automation-package",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Portable repo-local skill automation bundle for Codex and Claude Code.",
   "bin": {
     "skill-automation-package": "bin/skill-automation-package.js"
@@ -29,8 +29,9 @@
     "test:wrapper": "node --test tests/node/wrapper.test.js",
     "test:assets": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s assets/.claude/tests -p 'test_*.py'",
     "install:dry-run": "PYTHONDONTWRITEBYTECODE=1 python3 scripts/install.py --target /tmp/skill-automation-package-dry-run --dry-run",
+    "release:integrity": "PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_release_integrity.py",
     "sync-assets": "PYTHONDONTWRITEBYTECODE=1 python3 scripts/sync_assets.py",
-    "release:check": "npm run test && npm run test:assets && npm run test:wrapper && npm run install:dry-run && npm pack --dry-run --cache /tmp/skill-automation-package-npm-cache"
+    "release:check": "npm run test && npm run test:assets && npm run test:wrapper && npm run release:integrity && npm run install:dry-run && npm pack --dry-run --cache /tmp/skill-automation-package-npm-cache"
   },
   "managed_assets": [
     ".claude/tools/skill_agent.py",

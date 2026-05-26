@@ -158,12 +158,15 @@ class InstallScriptTests(unittest.TestCase):
 
             self.assertIn("Would update AGENTS.md: yes", result.stdout)
             self.assertIn("Would update CLAUDE.md: yes", result.stdout)
+            self.assertIn("Would update .gitignore: yes", result.stdout)
+            self.assertIn("Would copy files: 12", result.stdout)
             self.assertIn("Would write install manifest: no", result.stdout)
             self.assertIn("Refreshed registry: no", result.stdout)
             self.assertFalse(target_root.exists())
             self.assertFalse((target_root / ".claude" / "skill-automation-package.json").exists())
             self.assertFalse((target_root / "AGENTS.md").exists())
             self.assertFalse((target_root / "CLAUDE.md").exists())
+            self.assertFalse((target_root / ".gitignore").exists())
             self.assertFalse((target_root / ".claude" / "tools" / "skill_agent.py").exists())
 
     def test_cli_dry_run_reports_no_doc_updates_when_skipped(self) -> None:
@@ -188,8 +191,220 @@ class InstallScriptTests(unittest.TestCase):
 
             self.assertIn("Would update AGENTS.md: no", result.stdout)
             self.assertIn("Would update CLAUDE.md: no", result.stdout)
+            self.assertIn("Would update .gitignore: yes", result.stdout)
             self.assertIn("Would write install manifest: no", result.stdout)
             self.assertIn("Refreshed registry: no", result.stdout)
+            self.assertIn("AGENTS.md: skipped", result.stdout)
+            self.assertIn("CLAUDE.md: skipped", result.stdout)
+            self.assertIn(".gitignore: create", result.stdout)
+
+    def test_cli_dry_run_reports_package_file_preview_for_new_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            target_root = Path(tempdir) / "target-repo"
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS_DIR / "install.py"),
+                    "--target",
+                    str(target_root),
+                    "--dry-run",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=PACKAGE_ROOT,
+            )
+
+            self.assertIn("Package file preview:", result.stdout)
+            self.assertIn("would create: 12", result.stdout)
+            self.assertIn("would update: 0", result.stdout)
+            self.assertIn("unchanged: 0", result.stdout)
+            self.assertIn("previously installed but no longer shipped: 0", result.stdout)
+            self.assertIn("Managed file preview:", result.stdout)
+            self.assertIn("AGENTS.md: create", result.stdout)
+            self.assertIn("CLAUDE.md: create", result.stdout)
+            self.assertIn(".gitignore: create", result.stdout)
+
+    def test_cli_dry_run_reports_changed_unchanged_and_stale_packaged_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            target_root = Path(tempdir) / "target-repo"
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS_DIR / "install.py"),
+                    "--target",
+                    str(target_root),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=PACKAGE_ROOT,
+            )
+
+            stale_path = target_root / ".claude" / "skills" / "old-packaged-skill" / "SKILL.md"
+            stale_path.parent.mkdir(parents=True, exist_ok=True)
+            stale_path.write_text("# Old packaged skill\n", encoding="utf-8")
+
+            manifest_path = target_root / ".claude" / "skill-automation-package.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["assets"].append(".claude/skills/old-packaged-skill/SKILL.md")
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+            changed_path = target_root / ".claude" / "tools" / "skill_agent.py"
+            changed_path.write_text("# locally modified packaged file\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS_DIR / "install.py"),
+                    "--target",
+                    str(target_root),
+                    "--dry-run",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=PACKAGE_ROOT,
+            )
+
+            self.assertIn("would create: 0", result.stdout)
+            self.assertIn("would update: 1", result.stdout)
+            self.assertIn("    - .claude/tools/skill_agent.py", result.stdout)
+            self.assertIn("unchanged: 11", result.stdout)
+            self.assertIn("previously installed but no longer shipped: 1", result.stdout)
+            self.assertIn("    - .claude/skills/old-packaged-skill/SKILL.md", result.stdout)
+            self.assertIn("AGENTS.md: unchanged", result.stdout)
+            self.assertIn("CLAUDE.md: unchanged", result.stdout)
+            self.assertIn(".gitignore: unchanged", result.stdout)
+            self.assertTrue(stale_path.exists())
+
+    def test_cli_installs_generated_gitignore_block_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            target_root = Path(tempdir) / "target-repo"
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS_DIR / "install.py"),
+                    "--target",
+                    str(target_root),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=PACKAGE_ROOT,
+            )
+
+            gitignore = (target_root / ".gitignore").read_text(encoding="utf-8")
+            self.assertIn(install.GITIGNORE_MARKERS[0], gitignore)
+            self.assertIn(".claude/skills/registry.json", gitignore)
+            self.assertIn(".claude/skills/usage.json", gitignore)
+            self.assertIn(".claude/skill-automation-package.json", gitignore)
+            self.assertNotIn("\n.claude/\n", gitignore)
+            self.assertNotIn("\nAGENTS.md\n", gitignore)
+
+    def test_cli_replaces_existing_gitignore_block_without_touching_other_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            target_root = Path(tempdir) / "target-repo"
+            target_root.mkdir(parents=True, exist_ok=True)
+            (target_root / ".gitignore").write_text(
+                (
+                    "build/\n\n"
+                    f"{install.GITIGNORE_MARKERS[0]}\n"
+                    "old-generated-state\n"
+                    f"{install.GITIGNORE_MARKERS[1]}\n"
+                    "\ndist/\n"
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS_DIR / "install.py"),
+                    "--target",
+                    str(target_root),
+                    "--dry-run",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=PACKAGE_ROOT,
+            )
+            self.assertIn(".gitignore: replace", result.stdout)
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS_DIR / "install.py"),
+                    "--target",
+                    str(target_root),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=PACKAGE_ROOT,
+            )
+
+            gitignore = (target_root / ".gitignore").read_text(encoding="utf-8")
+            self.assertIn("build/", gitignore)
+            self.assertIn("dist/", gitignore)
+            self.assertIn(".claude/skills/registry.json", gitignore)
+            self.assertNotIn("old-generated-state", gitignore)
+            self.assertEqual(gitignore.count(install.GITIGNORE_MARKERS[0]), 1)
+
+    def test_cli_gitignore_mode_none_leaves_gitignore_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            target_root = Path(tempdir) / "target-repo"
+            target_root.mkdir(parents=True, exist_ok=True)
+            (target_root / ".gitignore").write_text("build/\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS_DIR / "install.py"),
+                    "--target",
+                    str(target_root),
+                    "--gitignore-mode",
+                    "none",
+                    "--dry-run",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=PACKAGE_ROOT,
+            )
+
+            self.assertIn("Would update .gitignore: no", result.stdout)
+            self.assertIn(".gitignore: skipped", result.stdout)
+            self.assertEqual((target_root / ".gitignore").read_text(encoding="utf-8"), "build/\n")
+
+    def test_cli_gitignore_mode_local_only_ignores_whole_install(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            target_root = Path(tempdir) / "target-repo"
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS_DIR / "install.py"),
+                    "--target",
+                    str(target_root),
+                    "--gitignore-mode",
+                    "local-only",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=PACKAGE_ROOT,
+            )
+
+            gitignore = (target_root / ".gitignore").read_text(encoding="utf-8")
+            self.assertIn(".claude/", gitignore)
+            self.assertIn("AGENTS.md", gitignore)
+            self.assertIn("CLAUDE.md", gitignore)
+            self.assertNotIn(".claude/skills/registry.json", gitignore)
 
     def test_cli_respects_skip_flags_and_omits_optional_test_asset(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

@@ -71,6 +71,29 @@ class GuidanceContentTests(unittest.TestCase):
         self.assertIn(".claude/skills/registry.json", readme)
         self.assertIn(".claude/skills/usage.json", readme)
         self.assertIn("### Local-Only Automation", readme)
+        self.assertIn("--gitignore-mode none", readme)
+        self.assertIn("--gitignore-mode local-only", readme)
+        self.assertIn("generated-state block by default", readme)
+
+    def test_readme_documents_dry_run_preview_and_metadata_recovery(self) -> None:
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("Dry-run output includes package file groups", readme)
+        self.assertIn("previously installed but no longer shipped", readme)
+        self.assertIn(".gitignore", readme)
+        self.assertIn("Metadata recovery behavior", readme)
+        self.assertIn("different package", readme)
+        self.assertIn("missing a usable asset list", readme)
+
+    def test_npm_release_workflow_documents_current_update_behavior(self) -> None:
+        workflow = (
+            REPO_ROOT / "docs" / "operations" / "npm-release-workflow.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("update` no-ops", workflow)
+        self.assertIn("wrong-package", workflow)
+        self.assertIn("invalid-assets", workflow)
+        self.assertIn("Dry-run behavior", workflow)
 
     def test_readme_separates_default_and_skip_docs_upgrade_paths(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")

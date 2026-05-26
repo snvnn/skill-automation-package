@@ -7,6 +7,7 @@ const fs = require("fs");
 const path = require("path");
 
 const MIN_PYTHON = { major: 3, minor: 10 };
+const PACKAGE_NAME = "skill-automation-package";
 const INSTALL_METADATA_PATH = path.join(".claude", "skill-automation-package.json");
 
 function main() {
@@ -145,8 +146,33 @@ function detectInstallState(targetRoot, currentVersion) {
   try {
     const raw = fs.readFileSync(metadataPath, "utf8");
     const metadata = JSON.parse(raw);
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      return { status: "unknown", targetRoot, metadataPath, reason: "invalid-shape" };
+    }
+
+    if (typeof metadata.name !== "string" || metadata.name.trim() === "") {
+      return { status: "unknown", targetRoot, metadataPath, reason: "missing-name" };
+    }
+    const installedName = metadata.name.trim();
+    if (installedName !== PACKAGE_NAME) {
+      return {
+        status: "unknown",
+        targetRoot,
+        metadataPath,
+        reason: "wrong-package",
+        installedName,
+      };
+    }
+
     if (typeof metadata.version !== "string" || metadata.version.trim() === "") {
       return { status: "unknown", targetRoot, metadataPath, reason: "missing-version" };
+    }
+
+    if (!Array.isArray(metadata.assets)) {
+      return { status: "unknown", targetRoot, metadataPath, reason: "invalid-assets" };
+    }
+    if (!metadata.assets.every((asset) => typeof asset === "string" && asset.trim() !== "")) {
+      return { status: "unknown", targetRoot, metadataPath, reason: "invalid-assets" };
     }
 
     const installedVersion = metadata.version.trim();
@@ -252,18 +278,26 @@ function printLifecycleSafety() {
 
 function describeUnknownMetadata(state, mode, currentVersion) {
   const metadataPath = state?.metadataPath || INSTALL_METADATA_PATH;
-  const reasonLabel = {
-    "invalid-json": "could not be parsed as JSON",
-    "missing-version": "does not contain a usable version",
-    "invalid-version": "contains a version that could not be compared",
-  };
-  const detail = reasonLabel[state?.reason] || "could not be compared";
+  const detail = describeMetadataProblem(state);
 
   if (mode === "install") {
     return `skill-automation-package: existing install metadata at ${metadataPath} ${detail}; reinstalling with version ${currentVersion}.`;
   }
 
   return `skill-automation-package: existing install metadata at ${metadataPath} ${detail}; use install to force a reinstall.`;
+}
+
+function describeMetadataProblem(state) {
+  const reasonLabel = {
+    "invalid-json": "could not be parsed as JSON",
+    "invalid-shape": "is not a JSON object",
+    "missing-name": "does not contain a usable package name",
+    "wrong-package": `belongs to package "${state?.installedName || "(unknown)"}" instead of ${PACKAGE_NAME}`,
+    "missing-version": "does not contain a usable version",
+    "invalid-version": "contains a version that could not be compared",
+    "invalid-assets": "does not contain a usable assets list",
+  };
+  return reasonLabel[state?.reason] || "could not be compared";
 }
 
 function printUsage(subcommand) {

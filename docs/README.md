@@ -20,17 +20,18 @@ If you are new to this repository, start here:
 - Active operations doc: `docs/operations/npm-release-workflow.md`
 - Root product/install reference: `README.md`
 
-## npm Wrapper Working Docs
+## npm Wrapper Docs
 
-The npm wrapper work is not implemented yet, so its documents live under `docs/working/` rather than the active reference set.
+The npm wrapper is implemented and is part of the current product surface.
+Use the root `README.md` and `docs/operations/npm-release-workflow.md` as the current canonical references.
 
-Read them in this order:
+Historical planning material remains under `docs/working/npm-wrapper/` for decision traceability.
+Read it in this order when you need background context:
 
 1. `docs/working/npm-wrapper/npm-wrapper-detailed-design.md`
 2. `docs/working/npm-wrapper/npm-wrapper-rollout-plan.md`
 
-`npm-wrapper-detailed-design.md` is the canonical working doc.
-`npm-wrapper-rollout-plan.md` is the supporting execution/checklist document.
+Those files are not the source of truth for current commands or release operations.
 
 ## Archive Notes
 
